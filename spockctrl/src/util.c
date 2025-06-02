@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * util.c
+/* util.c
  *      utility functions for spockctrl
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -130,7 +128,7 @@ trim_whitespace(char *str)
     end = str + strlen(str) - 1;
     while (end > str && isspace((unsigned char) *end)) end--;
 
-    /* Write new null terminator */
+    /* Add null terminator. */
     *(end + 1) = '\0';
 
     return str;
@@ -336,7 +334,7 @@ substitute_sql_vars(const char *sql_stmt)
 		}
 		else
 		{
-			/* opening quote already copied in pre‑text */
+			/* opening quote already copied in preceding text */
 			if (left <= strlen(esc) + 1)
 				goto fail;
 			strcpy(dst, esc);

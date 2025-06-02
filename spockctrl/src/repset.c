@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * repset.c
+/* repset.c
  *      replication set management and command handling functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -20,6 +18,8 @@
 #include "repset.h"
 #include "conf.h"
 #include "logger.h"
+
+#define CONN_INFO_BUFFER_SIZE 256
 
 static void print_repset_create_help(void);
 static void print_repset_alter_help(void);
@@ -109,8 +109,8 @@ handle_repset_create_command(int argc, char *argv[])
     char *replicate_update = NULL;
     char *replicate_delete = NULL;
     char *replicate_truncate = NULL;
-    const char *conninfo = NULL;
-    char *conninfo_allocated = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
+    /* char *conninfo_allocated = NULL; // This variable is no longer needed */
     int option_index = 0;
     int c;
 
@@ -154,18 +154,18 @@ handle_repset_create_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
-        free(conninfo_allocated); // Free allocated memory
+        /* conninfo_buffer is stack allocated, no free needed for it here.
+         * conninfo_allocated was removed. */
         return EXIT_FAILURE;
     }
 
@@ -187,7 +187,8 @@ handle_repset_create_command(int argc, char *argv[])
         log_error("SQL command failed: %s", PQerrorMessage(conn));
         PQclear(res);
         PQfinish(conn);
-        free(conninfo_allocated); // Free allocated memory
+        /* conninfo_buffer is stack allocated, no free needed for it here.
+         * conninfo_allocated was removed. */
         return EXIT_FAILURE;
     }
 
@@ -196,13 +197,15 @@ handle_repset_create_command(int argc, char *argv[])
         log_error("SQL function returned NULL for query: %s", sql);
         PQclear(res);
         PQfinish(conn);
-        free(conninfo_allocated); // Free allocated memory
+        /* conninfo_buffer is stack allocated, no free needed for it here.
+         * conninfo_allocated was removed. */
         return EXIT_FAILURE;
     }
 
     PQclear(res);
     PQfinish(conn);
-    free(conninfo_allocated); // Free allocated memory
+    /* conninfo_buffer is stack allocated, no free needed for it here.
+     * conninfo_allocated was removed. */
     return EXIT_SUCCESS;
 }
 
@@ -226,8 +229,8 @@ handle_repset_alter_command(int argc, char *argv[])
     char *replicate_update = NULL;
     char *replicate_delete = NULL;
     char *replicate_truncate = NULL;
-    const char *conninfo = NULL;
-    char *conninfo_allocated = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
+    /* char *conninfo_allocated = NULL; // This variable is no longer needed */
 
     int option_index = 0;
     int c;
@@ -268,18 +271,18 @@ handle_repset_alter_command(int argc, char *argv[])
         print_repset_alter_help();
         return EXIT_FAILURE;
     }
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
-        free(conninfo_allocated); // Free allocated memory
+        /* conninfo_buffer is stack allocated, no free needed for it here.
+         * conninfo_allocated was removed. */
         return EXIT_FAILURE;
     }
 
@@ -301,13 +304,15 @@ handle_repset_alter_command(int argc, char *argv[])
         log_error("SQL command failed: %s", PQerrorMessage(conn));
         PQclear(res);
         PQfinish(conn);
-        free(conninfo_allocated); 
+        /* conninfo_buffer is stack allocated, no free needed for it here.
+         * conninfo_allocated was removed. */
         return EXIT_FAILURE;
     }
 
     PQclear(res);
     PQfinish(conn);
-    free(conninfo_allocated);
+    /* conninfo_buffer is stack allocated, no free needed for it here.
+     * conninfo_allocated was removed. */
     return EXIT_SUCCESS;
 }
 
@@ -323,7 +328,7 @@ handle_repset_drop_command(int argc, char *argv[])
 
     char *node = NULL;
     char *set_name = NULL;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
 
     int option_index = 0;
     int c;
@@ -354,14 +359,13 @@ handle_repset_drop_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
@@ -420,7 +424,7 @@ handle_repset_add_table_command(int argc, char *argv[])
     char *columns = NULL;
     char *row_filter = NULL;
     char *include_partitions = NULL;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
 
     int option_index = 0;
     int c;
@@ -465,14 +469,13 @@ handle_repset_add_table_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
@@ -528,7 +531,7 @@ handle_repset_remove_table_command(int argc, char *argv[])
     char *node = NULL;
     char *replication_set = NULL;
     char *table = NULL;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
 
     int option_index = 0;
     int c;
@@ -561,14 +564,13 @@ handle_repset_remove_table_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
@@ -622,7 +624,7 @@ handle_repset_add_partition_command(int argc, char *argv[])
     char *parent_table = NULL;
     char *partition = NULL;
     char *row_filter = NULL;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
 
     int option_index = 0;
     int c;
@@ -658,14 +660,13 @@ handle_repset_add_partition_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
@@ -718,7 +719,7 @@ handle_repset_remove_partition_command(int argc, char *argv[])
     char *node = NULL;
     char *parent_table = NULL;
     char *partition = NULL;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
 
     int option_index = 0;
     int c;
@@ -751,14 +752,13 @@ handle_repset_remove_partition_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
@@ -808,7 +808,7 @@ handle_repset_list_tables_command(int argc, char *argv[])
 
     char *node = NULL;
     char *schema = NULL;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
 
     int option_index = 0;
     int c;
@@ -838,14 +838,13 @@ handle_repset_list_tables_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    PGconn *conn = connectdb(conninfo);
+    PGconn *conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");

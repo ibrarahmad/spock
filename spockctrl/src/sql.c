@@ -1,3 +1,12 @@
+/* sql.c
+ *      file specific description
+ *
+ * Copyright (c) 2022-2025, pgEdge, Inc.
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, The Regents of the University of California
+ *
+ *-------------------------------------------------------------------------
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +21,7 @@
 #include "sql.h"
 #include "util.h"
 
+#define CONN_INFO_BUFFER_SIZE 256
 
 void print_sql_help(void)
 {
@@ -36,7 +46,7 @@ int handle_sql_exec_command(int argc, char *argv[])
     char           *sql_stmt     = NULL;
     int             option_index = 0;
     int             c            = 0;
-    const char     *conninfo     = NULL;
+    char            conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     PGconn         *conn         = NULL;
     PGresult       *res          = NULL;
     char            out_filename[256];
@@ -75,19 +85,19 @@ int handle_sql_exec_command(int argc, char *argv[])
     if (sub_sql == NULL || strlen(sub_sql) == 0)
         sub_sql = (char *)sql_stmt;
 
-    conninfo = get_postgres_coninfo(node_name);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node_name, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node_name ? node_name : "(default)");
+        /* node_name can be NULL, get_postgres_coninfo handles logging */
         print_sql_help();
         return EXIT_FAILURE;
     }
 
-    conn = PQconnectdb(conninfo);
+    conn = PQconnectdb(conninfo_buffer);
     if (!conn || PQstatus(conn) != CONNECTION_OK)
     {
         log_error("Connection to database failed: %s", conn ? PQerrorMessage(conn) : "NULL connection");
         if (conn) PQfinish(conn);
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
     res = PQexec(conn, sub_sql);
@@ -97,6 +107,7 @@ int handle_sql_exec_command(int argc, char *argv[])
         if (res != NULL)
             PQclear(res);
         PQfinish(conn);
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -108,6 +119,7 @@ int handle_sql_exec_command(int argc, char *argv[])
         log_error("Could not open output file '%s' for writing.", out_filename);
         PQclear(res);
         PQfinish(conn);
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -149,6 +161,6 @@ int handle_sql_exec_command(int argc, char *argv[])
 
 void print_sql_exec_help(void)
 {
-    // No longer used, but keep for compatibility if referenced elsewhere
+    /* No longer used, but keep for compatibility if referenced elsewhere */
     print_sql_help();
 }

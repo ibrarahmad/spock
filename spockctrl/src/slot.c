@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * slot.c
+/* slot.c
  *      replication slot management and command handling functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -20,6 +18,8 @@
 #include "util.h"
 #include "conf.h"
 #include "slot.h"
+
+#define CONN_INFO_BUFFER_SIZE 256
 
 void print_slot_create_help(void);
 void print_slot_drop_help(void);
@@ -101,7 +101,7 @@ int handle_slot_create_command(int argc, char *argv[])
     int     temporary   = 0;
     int     option_index= 0;
     int     c           = 0;
-    const char *conninfo= NULL;
+    char    conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     PGconn *conn        = NULL;
     char    query[512];
     PGresult *res       = NULL;
@@ -136,15 +136,15 @@ int handle_slot_create_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node_name);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node_name, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node_name ? node_name : "(default)");
+        /* Node name can be NULL here if not provided, get_postgres_coninfo should handle it or be called conditionally */
+        log_error("Failed to get connection info for node '%s'.", node_name ? node_name : "(default node)");
         print_slot_create_help();
         return EXIT_FAILURE;
     }
 
-    conn = PQconnectdb(conninfo);
+    conn = PQconnectdb(conninfo_buffer);
     if (!conn || PQstatus(conn) != CONNECTION_OK)
     {
         log_error("Connection to database failed: %s", conn ? PQerrorMessage(conn) : "NULL connection");
@@ -188,7 +188,7 @@ int handle_slot_drop_command(int argc, char *argv[])
     char   *node_name    = NULL;
     int     option_index = 0;
     int     c            = 0;
-    const char *conninfo = NULL;
+    char    conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     PGconn *conn         = NULL;
     char    query[256];
     PGresult *res        = NULL;
@@ -223,15 +223,14 @@ int handle_slot_drop_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node_name);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node_name, conninfo_buffer, sizeof(conninfo_buffer)))
     {
         log_error("Failed to get connection info for node '%s'.", node_name);
         print_slot_drop_help();
         return EXIT_FAILURE;
     }
 
-    conn = PQconnectdb(conninfo);
+    conn = PQconnectdb(conninfo_buffer);
     if (!conn || PQstatus(conn) != CONNECTION_OK)
     {
         log_error("Connection to database failed: %s", conn ? PQerrorMessage(conn) : "NULL connection");

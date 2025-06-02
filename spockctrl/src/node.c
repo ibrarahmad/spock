@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * node.c
+/* node.c
  *      node management and command handling functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -19,6 +17,8 @@
 #include "logger.h"
 #include "util.h"
 #include "conf.h"
+
+#define CONN_INFO_BUFFER_SIZE 256
 
 /* Function declarations */
 static int node_spock_version(int argc, char *argv[]);
@@ -104,7 +104,7 @@ node_spock_version(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     char       *node = NULL;
 
     static struct option long_options[] = {
@@ -140,12 +140,14 @@ node_spock_version(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
+
+    /* TODO: Use conninfo_buffer to connect and get Spock version */
+    log_info("Successfully got conninfo for node_spock_version: %s (not used yet)", conninfo_buffer);
 
     return EXIT_SUCCESS;
 }
@@ -155,7 +157,7 @@ node_pg_version(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *node = NULL;
     char        pg_version[256];
 
@@ -191,16 +193,16 @@ node_pg_version(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
-    if (get_pg_version(conninfo, pg_version) != 0)
+    if (get_pg_version(conninfo_buffer, pg_version) != 0)
     {
         log_error("Failed to get PostgreSQL version for node %s", node);
+        /* conninfo_buffer does not need freeing as it's on stack */
         return EXIT_FAILURE;
     }
     printf("%s\n", pg_version);
@@ -212,7 +214,7 @@ node_status(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *node = NULL;
 
     static struct option long_options[] = {
@@ -245,12 +247,13 @@ node_status(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
+    /* TODO: Use conninfo_buffer to connect and get node status */
+    log_info("Successfully got conninfo for node_status: %s (not used yet)", conninfo_buffer);
 
     return EXIT_SUCCESS;
 }
@@ -260,7 +263,7 @@ node_gucs(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *node = NULL;
 
     static struct option long_options[] = {
@@ -293,12 +296,13 @@ node_gucs(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
+    /* TODO: Use conninfo_buffer to connect and get node GUCs */
+    log_info("Successfully got conninfo for node_gucs: %s (not used yet)", conninfo_buffer);
 
     return EXIT_SUCCESS;
 }
@@ -308,7 +312,7 @@ handle_node_create_command(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     char       *node_name = NULL;
     char       *node = NULL;
     char       *dsn = NULL;
@@ -402,18 +406,18 @@ handle_node_create_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node_name);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer does not need freeing as it's on stack */
         return EXIT_FAILURE;
     }
 
@@ -483,7 +487,7 @@ handle_node_drop_command(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     char       *node_name = NULL;
     char       *node = NULL;
     int         ifexists = 0;
@@ -542,18 +546,18 @@ handle_node_drop_command(int argc, char *argv[])
    }
 
    /* Get connection info */
-   conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node_name);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer does not need freeing as it's on stack */
         return EXIT_FAILURE;
     }
 
@@ -596,7 +600,7 @@ handle_node_add_interface_command(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     char       *node_name = NULL;
     char       *node = NULL;
     char       *interface_name = NULL;
@@ -664,18 +668,18 @@ handle_node_add_interface_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node_name);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer does not need freeing as it's on stack */
         return EXIT_FAILURE;
     }
 
@@ -721,7 +725,7 @@ handle_node_drop_interface_command(int argc, char *argv[])
 {
     int option_index = 0;
     int c;
-    const char *conninfo = NULL;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     char       *node_name = NULL;
     char       *node = NULL;
     char       *interface_name = NULL;
@@ -776,18 +780,18 @@ handle_node_drop_interface_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node_name);
+        /* Error already logged by get_postgres_coninfo */
         return EXIT_FAILURE;
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer does not need freeing as it's on stack */
         return EXIT_FAILURE;
     }
 

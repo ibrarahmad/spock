@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * workflow.c
+/* workflow.c
  *      workflow execution and step parsing functions for spockctrl
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -60,7 +58,7 @@ static int prepare_arguments(Step *step, char *argv[], int max_args, const char 
         if (argc >= max_args - 1)
         {
             log_error("Too many arguments in step: %s", step->name ? step->name : "(unknown)");
-            break;  // don't overflow argv
+            break;  /* don't overflow argv */
         }
         argv[argc++] = step->args[i];
     }
@@ -562,7 +560,7 @@ run_workflow(Workflow *workflow)
         else
         {
             printf("[FAILED]\n");
-            //return -1; /* Stop execution on failure */
+            /* return -1; Stop execution on failure */
         }
 
         /* Handle on_success and on_failure (currently placeholders) */
@@ -623,7 +621,7 @@ execute_step(Step *step, int step_index)
     }
     else if (step->type == STEP_TYPE_SHELL)
     {
-        //return handle_shell_command(argc, argv);
+        /* return handle_shell_command(argc, argv); */
     }
     return 0;
 }
