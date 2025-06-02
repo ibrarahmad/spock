@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * spock.c
+/* spock.c
  *      spock extension command handling functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -18,6 +16,8 @@
 #include "dbconn.h"
 #include "conf.h"
 #include "logger.h"
+
+#define CONN_INFO_BUFFER_SIZE 256
 
 extern Config config;
 
@@ -62,7 +62,7 @@ int handle_spock_wait_for_sync_event_command(int argc, char *argv[])
     int             timeout      = 0;
     int             option_index = 0;
     int             c;
-    const char     *conninfo     = NULL;
+    char            conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     PGconn         *conn         = NULL;
     char            sql[512];
     PGresult       *res          = NULL;
@@ -106,14 +106,13 @@ int handle_spock_wait_for_sync_event_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* get_postgres_coninfo logs error */
         return EXIT_FAILURE;
     }
 
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
@@ -192,7 +191,7 @@ int handle_spock_sync_event_command(int argc, char *argv[])
     char           *node         = NULL;
     int             option_index = 0;
     int             c;
-    const char     *conninfo     = NULL;
+    char            conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     PGconn         *conn         = NULL;
     char            sql[512];
     PGresult       *res          = NULL;
@@ -222,14 +221,13 @@ int handle_spock_sync_event_command(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* get_postgres_coninfo logs error */
         return EXIT_FAILURE;
     }
 
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");

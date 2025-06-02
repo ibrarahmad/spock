@@ -1,3 +1,12 @@
+/* spock.h
+ *      Declarations for Spock extension command handlers.
+ *
+ * Copyright (c) 2022-2025, pgEdge, Inc.
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, The Regents of the University of California
+ *
+ *-------------------------------------------------------------------------
+ */
 #ifndef SPOCK_H
 #define SPOCK_H
 
@@ -16,4 +25,4 @@ int call_wait_for_sync_event(PGconn *conn, const char *origin_type, const char *
 int handle_spock_wait_for_sync_event_command(int argc, char *argv[]);
 int handle_spock_sync_event_command(int argc, char *argv[]);
 
-#endif // SPOCK_H
+#endif /* SPOCK_H */

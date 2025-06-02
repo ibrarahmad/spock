@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * dbconn.c
+/* dbconn.c
  *      database connection and utility functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -26,7 +24,7 @@ connectdb(const char *conninfo)
     /* Make a connection to the database */
     conn = PQconnectdb(conninfo);
 
-    /* Check to see that the backend connection was successfully made */
+    /* Check if the backend connection was successful */
     if (PQstatus(conn) != CONNECTION_OK)
     {
         log_error("Connection to database failed\n %s", PQerrorMessage(conn));

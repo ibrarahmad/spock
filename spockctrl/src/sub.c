@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * sub.c
+/* sub.c
  *      subscription management and command handling functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -20,6 +18,8 @@
 #include "conf.h"
 #include "sub.h"
 #include "logger.h"
+
+#define CONN_INFO_BUFFER_SIZE 256
 
 static void print_sub_create_help(void);
 static void print_sub_drop_help(void);
@@ -134,7 +134,7 @@ handle_sub_create_command(int argc, char *argv[])
     char       *apply_delay          = NULL;
     char       *force_text_transfer  = NULL;
     char       *enabled              = NULL;
-    const char *conninfo;
+    char        conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn     *conn;
     PGresult   *res;
@@ -216,10 +216,9 @@ handle_sub_create_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_create_help();
         return EXIT_FAILURE;
     }
@@ -233,10 +232,11 @@ handle_sub_create_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -330,7 +330,7 @@ handle_sub_drop_command(int argc, char *argv[])
     char *node = NULL;
     char *sub_name = NULL;
     int ifexists = 0;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     PGresult *res;
@@ -342,7 +342,7 @@ handle_sub_drop_command(int argc, char *argv[])
     optind = 1;
  
     /* Parse command-line options */
-    optind = 1; // Reset optind to ensure proper parsing
+    optind = 1; /* Reset optind to ensure proper parsing */
 
     while ((c = getopt_long(argc, argv, "t:s:eh", long_options, &option_index)) != -1)
     {
@@ -383,10 +383,9 @@ handle_sub_drop_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_drop_help();
         return EXIT_FAILURE;
     }
@@ -400,10 +399,11 @@ handle_sub_drop_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -455,7 +455,7 @@ handle_sub_enable_command(int argc, char *argv[])
     char *node = NULL;
     char *sub_name = NULL;
     char *immediate = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     PGresult *res;
@@ -465,7 +465,7 @@ handle_sub_enable_command(int argc, char *argv[])
     int c;
 
     /* Parse command-line options */
-    optind = 1; // Reset optind to ensure proper parsing
+    optind = 1; /* Reset optind to ensure proper parsing */
 
     while ((c = getopt_long(argc, argv, "n:s:i:h", long_options, &option_index)) != -1)
     {
@@ -498,10 +498,9 @@ handle_sub_enable_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_enable_help();
         return EXIT_FAILURE;
     }
@@ -515,10 +514,11 @@ handle_sub_enable_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -571,7 +571,7 @@ handle_sub_disable_command(int argc, char *argv[])
     char *node = NULL;
     char *sub_name = NULL;
     char *immediate = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     PGresult *res;
@@ -580,7 +580,7 @@ handle_sub_disable_command(int argc, char *argv[])
     int option_index = 0;
     int c;
 
-    optind = 1; // Reset optind to ensure proper parsing
+    optind = 1; /* Reset optind to ensure proper parsing */
     while ((c = getopt_long(argc, argv, "n:s:i:h", long_options, &option_index)) != -1)
     {
         switch (c)
@@ -612,10 +612,9 @@ handle_sub_disable_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_disable_help();
         return EXIT_FAILURE;
     }
@@ -629,10 +628,11 @@ handle_sub_disable_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -683,7 +683,7 @@ handle_sub_show_status_command(int argc, char *argv[])
 
     char *node = NULL;
     char *sub_name = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     PGresult *res;
@@ -720,10 +720,9 @@ handle_sub_show_status_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_show_status_help();
         return EXIT_FAILURE;
     }
@@ -737,10 +736,11 @@ handle_sub_show_status_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -795,7 +795,7 @@ handle_sub_show_table_command(int argc, char *argv[])
     char *node = NULL;
     char *sub_name = NULL;
     char *relation = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     PGresult *res;
@@ -835,10 +835,9 @@ handle_sub_show_table_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_show_table_help();
         return EXIT_FAILURE;
     }
@@ -852,10 +851,11 @@ handle_sub_show_table_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -915,7 +915,7 @@ handle_sub_resync_table_command(int argc, char *argv[])
     char *sub_name = NULL;
     char *relation = NULL;
     char *truncate = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     char sql[2048];
@@ -957,10 +957,9 @@ handle_sub_resync_table_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_resync_table_help();
         return EXIT_FAILURE;
     }
@@ -974,10 +973,11 @@ handle_sub_resync_table_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -1019,7 +1019,7 @@ handle_sub_add_repset_command(int argc, char *argv[])
     char *node = NULL;
     char *sub_name = NULL;
     char *replication_set = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     char sql[2048];
@@ -1058,10 +1058,9 @@ handle_sub_add_repset_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_add_repset_help();
         return EXIT_FAILURE;
     }
@@ -1075,10 +1074,11 @@ handle_sub_add_repset_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 
@@ -1114,7 +1114,7 @@ handle_sub_remove_repset_command(int argc, char *argv[])
     char *node = NULL;
     char *sub_name = NULL;
     char *replication_set = NULL;
-    const char *conninfo;
+    char conninfo_buffer[CONN_INFO_BUFFER_SIZE];
     const char *db;
     PGconn *conn;
     char sql[2048];
@@ -1153,10 +1153,9 @@ handle_sub_remove_repset_command(int argc, char *argv[])
     }
 
     /* Get connection info */
-    conninfo = get_postgres_coninfo(node);
-    if (conninfo == NULL)
+    if (!get_postgres_coninfo(node, conninfo_buffer, sizeof(conninfo_buffer)))
     {
-        log_error("Failed to get connection info for node '%s'.", node);
+        /* Error already logged by get_postgres_coninfo */
         print_sub_remove_repset_help();
         return EXIT_FAILURE;
     }
@@ -1170,10 +1169,11 @@ handle_sub_remove_repset_command(int argc, char *argv[])
     }
 
     /* Connect to the database */
-    conn = connectdb(conninfo);
+    conn = connectdb(conninfo_buffer);
     if (conn == NULL)
     {
         log_error("Failed to connect to the database.");
+        /* conninfo_buffer is on stack, no free needed */
         return EXIT_FAILURE;
     }
 

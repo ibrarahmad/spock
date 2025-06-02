@@ -1,3 +1,12 @@
+/* util.h
+ *      Declarations for various utility functions.
+ *
+ * Copyright (c) 2022-2025, pgEdge, Inc.
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, The Regents of the University of California
+ *
+ *-------------------------------------------------------------------------
+ */
 #ifndef UTIL_H
 #define UTIL_H
 
@@ -35,7 +44,7 @@ char *make_select_query(const char *table, const char *columns, const char *cond
 /* Function to create a Spock-specific query with variable parameters */
 char *make_spock_query(const char *command, const char *params_format, ...);
 
-/* Function to create a Spock-specific query with variable parameters */
+/* Function to remove a trailing newline from a string */
 void trim_newline(char *str);
 
 /* Function to substitute SQL variables with values from node.out */

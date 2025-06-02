@@ -1,3 +1,12 @@
+/* logger.h
+ *      Logging level definitions, color macros, and declarations for logging functions.
+ *
+ * Copyright (c) 2022-2025, pgEdge, Inc.
+ * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, The Regents of the University of California
+ *
+ *-------------------------------------------------------------------------
+ */
 #ifndef LOGGER_H
 #define LOGGER_H
 
@@ -34,4 +43,4 @@ void log_debug1(const char *fmt, ...);
 
 extern LogLevel current_log_level;
 
-#endif // LOGGER_H
+#endif /* LOGGER_H */

@@ -1,9 +1,7 @@
-/*-------------------------------------------------------------------------
- *
- * conf.c
+/* conf.c
  *      configuration file parsing and access functions
  *
- * Copyright (c) 2022-2024, pgEdge, Inc.
+ * Copyright (c) 2022-2025, pgEdge, Inc.
  * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, The Regents of the University of California
  *
@@ -154,7 +152,7 @@ load_config(const char *filename)
             goto exit_err;
         }
 
-        // Parse postgres_db
+        /* Parse postgres_db */
         config.spock_nodes[i].postgres.postgres_db = strdup(json_string_value(json_object_get(postgres, "postgres_db")));
         if (!config.spock_nodes[i].postgres.postgres_db)
         {
@@ -285,60 +283,91 @@ get_postgres_db(const char *node_name)
     return NULL;
 }
 
-const char *
-get_postgres_coninfo(const char *node_name)
+/*
+ * get_postgres_coninfo
+ *      Constructs the PostgreSQL connection string for a given node.
+ *
+ * node_name: Name of the node to get connection info for.
+ * buffer: Caller-provided buffer to store the connection string.
+ * buffer_size: Size of the caller-provided buffer.
+ *
+ * Returns true on success (connection string written to buffer),
+ * false on failure (e.g., node not found, buffer too small).
+ *
+ * The connection string is of the form:
+ * "host=<ip> port=<port> user=<user> password=<password> dbname=<db>"
+ */
+bool
+get_postgres_coninfo(const char *node_name, char *buffer, size_t buffer_size)
 {
     bool found = false;
-    for (int i = 0; i < config.spock_node_count; i++)
+    int i;
+    for (i = 0; i < config.spock_node_count; i++)
     {
         if (strcmp(config.spock_nodes[i].node_name, node_name) == 0)
         {
             found = true;
+            break; /* Found the node, no need to iterate further */
         }
     }
+
     if (!found)
     {
         log_error("Error: node '%s' not found in configuration", node_name);
-        return NULL;
+        return false;
     }
-    const char *ip = get_postgres_ip(node_name);
-    int port = get_postgres_port(node_name);
-    const char *user = get_postgres_user(node_name);
-    const char *password = get_postgres_password(node_name);
-    const char *db = get_postgres_db(node_name);
 
+    /* Retrieve connection parameters */
+    const char *ip = config.spock_nodes[i].postgres.postgres_ip;
+    int port = config.spock_nodes[i].postgres.postgres_port;
+    const char *user = config.spock_nodes[i].postgres.postgres_user;
+    const char *password = config.spock_nodes[i].postgres.postgres_password;
+    const char *db = config.spock_nodes[i].postgres.postgres_db;
+
+    /* Validate that all necessary parameters were found */
     if (!ip)
     {
         log_error("Error: IP address not found for node '%s'", node_name);
-        return NULL;
+        return false;
     }
-    if (port == -1)
+    if (port == -1) /* Assuming -1 indicates port not set or invalid */
     {
-        log_error("Error: Port not found for node '%s'", node_name);
-        return NULL;
+        log_error("Error: Port not found or invalid for node '%s'", node_name);
+        return false;
     }
     if (!user)
     {
         log_error("Error: User not found for node '%s'", node_name);
-        return NULL;
+        return false;
     }
     if (!password)
     {
         log_error("Error: Password not found for node '%s'", node_name);
-        return NULL;
+        return false;
     }
     if (!db)
     {
         log_error("Error: Database not found for node '%s'", node_name);
-        return NULL;
+        return false;
     }
 
-    char *coninfo = malloc(256);
-    if (!coninfo)
+    int required_size = snprintf(NULL, 0, "host=%s port=%d user=%s password=%s dbname=%s",
+                                 ip, port, user, password, db);
+    if (required_size < 0)
     {
-        log_error("Error: memory allocation failed for connection info");
-        return NULL;
+        log_error("Error calculating connection string size for node '%s'", node_name);
+        return false;
     }
-    snprintf(coninfo, 256, "host=%s port=%d user=%s password=%s dbname=%s", ip, port, user, password, db);
-    return coninfo;
+
+    if ((size_t)required_size >= buffer_size)
+    {
+        log_error("Error: Buffer too small for connection string for node '%s'. Required: %d, Available: %zu",
+                  node_name, required_size + 1, buffer_size);
+        return false;
+    }
+
+    snprintf(buffer, buffer_size, "host=%s port=%d user=%s password=%s dbname=%s",
+             ip, port, user, password, db);
+
+    return true;
 }
