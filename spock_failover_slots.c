@@ -850,191 +850,241 @@ synchronize_one_slot(RemoteSlot *remote_slot)
 static long
 synchronize_failover_slots(long sleep_time)
 {
-	List *slots;
+	List *slots = NIL; /* Initialize to NIL */
 	ListCell *lc;
-	PGconn *conn;
+	PGconn *conn = NULL; /* Initialize to NULL */
 	XLogRecPtr safe_lsn;
 	XLogRecPtr lsn = InvalidXLogRecPtr;
 	static bool was_lsn_safe = false;
 	bool is_lsn_safe = false;
 	StringInfoData connstr;
 
-	if (!WalRcv || !HotStandbyActive() ||
-		list_length(spock_failover_slot_names_list) == 0)
-		return sleep_time;
-
-	/* XXX should these be errors or just soft return like above? */
-	if (!hot_standby_feedback)
-		elog(
-			ERROR,
-			"cannot synchronize replication slot positions because hot_standby_feedback is off");
-	if (WalRcv->slotname[0] == '\0')
-		elog(
-			ERROR,
-			"cannot synchronize replication slot positions because primary_slot_name is not set");
-
-	elog(DEBUG1, "starting replication slot synchronization from primary");
-
-	initStringInfo(&connstr);
-	make_sync_failover_slots_dsn(&connstr, NULL /* Use default db name */);
-	conn = remote_connect(connstr.data, "spock_failover_slots");
+	MemoryContext oldcontext;
+	MemoryContext SpockFailoverSlotsIterationContext;
 
 	/*
-	 * Do not synchronize WAL decoder slots on a physical standy.
+	 * Create a new memory context for this iteration.
 	 *
-	 * WAL decoder slots are used to produce LCRs. These LCRs are not
-	 * synchronized on a physical standby after initial backup and hence are
-	 * not included in the base backup. Thus WAL decoder slots, if synchronized
-	 * on physical standby, do not reflect the status of LCR directory as they
-	 * do on primary.
-	 *
-	 * There are other slots whose WAL senders use LCRs. These other slots are
-	 * synchronized and used after promotion. Since the WAL decoder slots are
-	 * ahead of these other slots, the WAL decoder when started after promotion
-	 * might miss LCRs required by WAL senders of the other slots.  This would
-	 * cause data inconsistency after promotion.
-	 *
-	 * Hence do not synchronize WAL decoder slot. Those will be created after
-	 * promotion
+	 * Allocations within this function, especially by
+	 * remote_get_primary_slot_info for the slots list and its contents,
+	 * and by StringInfo operations, will occur in this temporary context.
 	 */
-	slots = remote_get_primary_slot_info(conn, spock_failover_slot_names_list);
-	safe_lsn = remote_get_physical_slot_lsn(conn, WalRcv->slotname);
+	SpockFailoverSlotsIterationContext = AllocSetContextCreate(CurrentMemoryContext,
+															 "SpockFailoverSlotsIterationContext",
+															 ALLOCSET_DEFAULT_SIZES);
+	oldcontext = MemoryContextSwitchTo(SpockFailoverSlotsIterationContext);
 
-	/*
-	 * Delete locally-existing slots that don't exist on the master.
-	 */
-	for (;;)
+	PG_TRY();
 	{
-		int i;
-		char *dropslot = NULL;
-
-		LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
-		for (i = 0; i < max_replication_slots; i++)
+		if (!WalRcv || !HotStandbyActive() ||
+			list_length(spock_failover_slot_names_list) == 0)
 		{
-			ReplicationSlot *s = &ReplicationSlotCtl->replication_slots[i];
-			bool active;
-			bool found = false;
+			/* No active work to do, switch back and clean up immediately */
+			MemoryContextSwitchTo(oldcontext);
+			MemoryContextDelete(SpockFailoverSlotsIterationContext);
+			return sleep_time;
+		}
 
-			active = (s->active_pid != 0);
+		/* XXX should these be errors or just soft return like above? */
+		if (!hot_standby_feedback)
+			elog(
+				ERROR,
+				"cannot synchronize replication slot positions because hot_standby_feedback is off");
+		if (WalRcv->slotname[0] == '\0')
+			elog(
+				ERROR,
+				"cannot synchronize replication slot positions because primary_slot_name is not set");
 
-			/* Only check inactive slots. */
-			if (!s->in_use || active)
-				continue;
+		elog(DEBUG1, "starting replication slot synchronization from primary");
 
-			/* Only check for logical slots. */
-			if (SlotIsPhysical(s))
-				continue;
+		initStringInfo(&connstr);
+		make_sync_failover_slots_dsn(&connstr, NULL /* Use default db name */);
+		conn = remote_connect(connstr.data, "spock_failover_slots");
 
-			/* Try to find slot in slots returned by primary. */
-			foreach (lc, slots)
+		/*
+		 * Do not synchronize WAL decoder slots on a physical standy.
+		 *
+		 * WAL decoder slots are used to produce LCRs. These LCRs are not
+		 * synchronized on a physical standby after initial backup and hence are
+		 * not included in the base backup. Thus WAL decoder slots, if synchronized
+		 * on physical standby, do not reflect the status of LCR directory as they
+		 * do on primary.
+		 *
+		 * There are other slots whose WAL senders use LCRs. These other slots are
+		 * synchronized and used after promotion. Since the WAL decoder slots are
+		 * ahead of these other slots, the WAL decoder when started after promotion
+		 * might miss LCRs required by WAL senders of the other slots.  This would
+		 * cause data inconsistency after promotion.
+		 *
+		 * Hence do not synchronize WAL decoder slot. Those will be created after
+		 * promotion
+		 */
+		slots = remote_get_primary_slot_info(conn, spock_failover_slot_names_list);
+		safe_lsn = remote_get_physical_slot_lsn(conn, WalRcv->slotname);
+
+		/*
+		 * Delete locally-existing slots that don't exist on the master.
+		 */
+		for (;;)
+		{
+			int i;
+			char *dropslot = NULL;
+
+			LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
+			for (i = 0; i < max_replication_slots; i++)
 			{
-				RemoteSlot *remote_slot = lfirst(lc);
+				ReplicationSlot *s = &ReplicationSlotCtl->replication_slots[i];
+				bool active;
+				bool found = false;
 
-				if (strcmp(NameStr(s->data.name), remote_slot->name) == 0)
+				active = (s->active_pid != 0);
+
+				/* Only check inactive slots. */
+				if (!s->in_use || active)
+					continue;
+
+				/* Only check for logical slots. */
+				if (SlotIsPhysical(s))
+					continue;
+
+				/* Try to find slot in slots returned by primary. */
+				foreach (lc, slots)
 				{
-					found = true;
+					RemoteSlot *remote_slot = lfirst(lc);
+
+					if (strcmp(NameStr(s->data.name), remote_slot->name) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				/*
+				 * Not found, should be dropped if synchronize_failover_slots_drop
+				 * is enabled.
+				 */
+				if (!found && spock_failover_slots_drop)
+				{
+					dropslot = pstrdup(NameStr(s->data.name));
 					break;
 				}
 			}
+			LWLockRelease(ReplicationSlotControlLock);
+
+			if (dropslot)
+			{
+				elog(WARNING, "dropping replication slot \"%s\"", dropslot);
+				ReplicationSlotDrop(dropslot, false);
+				pfree(dropslot);
+			}
+			else
+				break;
+		}
+
+		if (!list_length(slots))
+		{
+			/*
+			 * No slots to synchronize, but connection was made and work might
+			 * have been done (dropping slots). Ensure cleanup.
+			 */
+			if (conn)
+				PQfinish(conn);
+			conn = NULL; /* Avoid double free in PG_FINALLY */
+
+			MemoryContextSwitchTo(oldcontext);
+			MemoryContextDelete(SpockFailoverSlotsIterationContext);
+			return sleep_time;
+		}
+
+		/* Find oldest restart_lsn still needed by any failover slot. */
+		foreach (lc, slots)
+		{
+			RemoteSlot *remote_slot = lfirst(lc);
+
+			if (lsn == InvalidXLogRecPtr || remote_slot->restart_lsn < lsn)
+				lsn = remote_slot->restart_lsn;
+		}
+
+		if (safe_lsn == InvalidXLogRecPtr ||
+			WalRcv->latestWalEnd == InvalidXLogRecPtr)
+		{
+			ereport(
+				WARNING,
+				(errmsg(
+					"cannot synchronize replication slot positions yet because feedback was not sent yet")));
+			was_lsn_safe = false;
+			/* Connection will be closed in PG_FINALLY */
+			MemoryContextSwitchTo(oldcontext);
+			MemoryContextDelete(SpockFailoverSlotsIterationContext);
+			return Min(sleep_time, WORKER_WAIT_FEEDBACK);
+		}
+		else if (WalRcv->latestWalEnd < lsn)
+		{
+			ereport(
+				WARNING,
+				(errmsg(
+					"requested slot synchronization point %X/%X is ahead of the standby position %X/%X, not synchronizing slots",
+					(uint32) (lsn >> 32), (uint32) (lsn),
+					(uint32) (WalRcv->latestWalEnd >> 32),
+					(uint32) (WalRcv->latestWalEnd))));
+			was_lsn_safe = false;
+			/* Connection will be closed in PG_FINALLY */
+			MemoryContextSwitchTo(oldcontext);
+			MemoryContextDelete(SpockFailoverSlotsIterationContext);
+			return Min(sleep_time, WORKER_WAIT_FEEDBACK);
+		}
+
+		is_lsn_safe = true; /* Moved this line up as it's relevant if we proceed */
+
+		foreach (lc, slots)
+		{
+			RemoteSlot *remote_slot = lfirst(lc);
+			XLogRecPtr receivePtr;
 
 			/*
-			 * Not found, should be dropped if synchronize_failover_slots_drop
-			 * is enabled.
+			 * If we haven't received WAL for a remote slot's current
+			 * confirmed_flush_lsn our local copy shouldn't reflect a confirmed
+			 * position in the future. Cap it at the position we really received.
+			 *
+			 * Because the client will use a replication origin to track its
+			 * position, in most cases it'll still fast-forward to the new
+			 * confirmed position even if that skips over a gap of WAL we never
+			 * received from the provider before failover. We can't detect or
+			 * prevent that as the same fast forward is normal when we lost slot
+			 * state in a provider crash after subscriber committed but before we
+			 * saved the new confirmed flush lsn. The master will also fast forward
+			 * the slot over irrelevant changes and then the subscriber will update
+			 * its confirmed_flush_lsn in response to master standby status
+			 * updates.
 			 */
-			if (!found && spock_failover_slots_drop)
-			{
-				dropslot = pstrdup(NameStr(s->data.name));
-				break;
-			}
+			receivePtr = GetWalRcvFlushRecPtr(NULL, NULL);
+			if (remote_slot->confirmed_lsn > receivePtr)
+				remote_slot->confirmed_lsn = receivePtr;
+
+			/*
+			 * For simplicity we always move restart_lsn of all slots to the
+			 * restart_lsn needed by the furthest-behind master slot.
+			 */
+			if (remote_slot->restart_lsn > lsn)
+				remote_slot->restart_lsn = lsn;
+
+			synchronize_one_slot(remote_slot);
 		}
-		LWLockRelease(ReplicationSlotControlLock);
-
-		if (dropslot)
-		{
-			elog(WARNING, "dropping replication slot \"%s\"", dropslot);
-			ReplicationSlotDrop(dropslot, false);
-			pfree(dropslot);
-		}
-		else
-			break;
-	}
-
-	if (!list_length(slots))
-	{
-		PQfinish(conn);
-		return sleep_time;
-	}
-
-	/* Find oldest restart_lsn still needed by any failover slot. */
-	foreach (lc, slots)
-	{
-		RemoteSlot *remote_slot = lfirst(lc);
-
-		if (lsn == InvalidXLogRecPtr || remote_slot->restart_lsn < lsn)
-			lsn = remote_slot->restart_lsn;
-	}
-
-	if (safe_lsn == InvalidXLogRecPtr ||
-		WalRcv->latestWalEnd == InvalidXLogRecPtr)
-	{
-		ereport(
-			WARNING,
-			(errmsg(
-				"cannot synchronize replication slot positions yet because feedback was not sent yet")));
-		was_lsn_safe = false;
-		PQfinish(conn);
-		return Min(sleep_time, WORKER_WAIT_FEEDBACK);
-	}
-	else if (WalRcv->latestWalEnd < lsn)
-	{
-		ereport(
-			WARNING,
-			(errmsg(
-				"requested slot synchronization point %X/%X is ahead of the standby position %X/%X, not synchronizing slots",
-				(uint32) (lsn >> 32), (uint32) (lsn),
-				(uint32) (WalRcv->latestWalEnd >> 32),
-				(uint32) (WalRcv->latestWalEnd))));
-		was_lsn_safe = false;
-		PQfinish(conn);
-		return Min(sleep_time, WORKER_WAIT_FEEDBACK);
-	}
-
-	foreach (lc, slots)
-	{
-		RemoteSlot *remote_slot = lfirst(lc);
-		XLogRecPtr receivePtr;
 
 		/*
-		 * If we haven't received WAL for a remote slot's current
-		 * confirmed_flush_lsn our local copy shouldn't reflect a confirmed
-		 * position in the future. Cap it at the position we really received.
-		 *
-		 * Because the client will use a replication origin to track its
-		 * position, in most cases it'll still fast-forward to the new
-		 * confirmed position even if that skips over a gap of WAL we never
-		 * received from the provider before failover. We can't detect or
-		 * prevent that as the same fast forward is normal when we lost slot
-		 * state in a provider crash after subscriber committed but before we
-		 * saved the new confirmed flush lsn. The master will also fast forward
-		 * the slot over irrelevant changes and then the subscriber will update
-		 * its confirmed_flush_lsn in response to master standby status
-		 * updates.
+		 * All processing done for this iteration. Connection will be closed
+		 * and memory context cleaned up in PG_FINALLY.
 		 */
-		receivePtr = GetWalRcvFlushRecPtr(NULL, NULL);
-		if (remote_slot->confirmed_lsn > receivePtr)
-			remote_slot->confirmed_lsn = receivePtr;
-
-		/*
-		 * For simplicity we always move restart_lsn of all slots to the
-		 * restart_lsn needed by the furthest-behind master slot.
-		 */
-		if (remote_slot->restart_lsn > lsn)
-			remote_slot->restart_lsn = lsn;
-
-		synchronize_one_slot(remote_slot);
 	}
+	PG_FINALLY();
+	{
+		if (conn)
+			PQfinish(conn);
 
-	PQfinish(conn);
+		MemoryContextSwitchTo(oldcontext);
+		MemoryContextDelete(SpockFailoverSlotsIterationContext);
+	}
+	PG_END_TRY();
 
 	if (!was_lsn_safe && is_lsn_safe)
 		elog(LOG, "slot synchronization from primary now active");
@@ -1043,6 +1093,10 @@ synchronize_failover_slots(long sleep_time)
 
 	return sleep_time;
 }
+/* Note: is_lsn_safe is now declared inside the PG_TRY block */
+/* static bool was_lsn_safe = false; -- This is a static variable, keep its scope */
+/* bool is_lsn_safe = false; -- This is now correctly scoped */
+/* StringInfoData connstr; -- This is now correctly scoped */
 
 void
 spock_failover_slots_main(Datum main_arg)
