@@ -37,9 +37,11 @@ def log_step(step_number, description, status):
 
 # Function to execute SQL commands on a specific DSN
 def execute_sql(sql, conn_info):
-    conn_command = f"psql '{conn_info}' -c \"{sql}\""
+    # Quote the heredoc delimiter to prevent shell expansion
+    conn_command = f"psql '{conn_info}' -v ON_ERROR_STOP=1 <<'EOF'\n{sql}\nEOF"
     result = subprocess.run(conn_command, shell=True, capture_output=True, text=True)
     return result.returncode, result.stdout, result.stderr
+
 
 # Function to generate SQL for `node_create`
 def node_create(node_name, dsn, location, country):
@@ -158,6 +160,38 @@ def add_node_workflow(verbose):
             "sql": rf"CALL spock.wait_for_sync_event(true, '{NODE1_NAME}', $10::pg_lsn, {SYNC_EVENT_TIMEOUT});",
             "conn_info": NODE3_DSN,
             "ignore_error": True
+        },
+        {
+            "description": "Check the replication lags between nodes",
+            "sql": """
+            DO $$ 
+            DECLARE
+                lag_n1_n3 interval;
+                lag_n2_n3 interval;
+            BEGIN
+                LOOP
+                    SELECT now() - commit_timestamp INTO lag_n1_n3
+                    FROM spock.lag_tracker
+                    WHERE origin_name = 'n1' AND receiver_name = 'n3';
+
+                    SELECT now() - commit_timestamp INTO lag_n2_n3
+                    FROM spock.lag_tracker
+                    WHERE origin_name = 'n2' AND receiver_name = 'n3';
+
+                    RAISE NOTICE 'n1 → n3 lag: %, n2 → n3 lag: %',
+                                    COALESCE(lag_n1_n3::text, 'NULL'),
+                                    COALESCE(lag_n2_n3::text, 'NULL');
+
+                    EXIT WHEN lag_n1_n3 IS NOT NULL AND lag_n2_n3 IS NOT NULL
+                                AND extract(epoch FROM lag_n1_n3) < 59
+                                AND extract(epoch FROM lag_n2_n3) < 59;
+
+                    PERFORM pg_sleep(1);
+                END LOOP;
+            END
+            $$;
+            """.strip(),
+            "conn_info": NODE3_DSN
         }
     ]
 
