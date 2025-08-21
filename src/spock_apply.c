@@ -88,7 +88,7 @@
 #include "spock_apply_heap.h"
 #include "spock_apply_spi.h"
 #include "spock_exception_handler.h"
-#include "spock_common.h"
+#include "spock_replay_spill.h"
 #include "spock_readonly.h"
 #include "spock.h"
 
@@ -148,6 +148,7 @@ typedef struct ApplyReplayEntryData ApplyReplayEntry;
 struct ApplyReplayEntryData
 {
 	StringInfoData		copydata;
+	bool				from_pq;		/* true if data is libpq-owned, false if palloc'd */
 	ApplyReplayEntry   *next;
 };
 static MemoryContext		ApplyReplayContext = NULL;
@@ -156,6 +157,12 @@ static ApplyReplayEntry	   *apply_replay_tail = NULL;
 static ApplyReplayEntry	   *apply_replay_next = NULL;
 static int					apply_replay_bytes = 0;
 static bool					apply_replay_overflow = false;
+
+/* Spill management variables */
+static bool					apply_spill_started = false;
+static bool					apply_replay_spill_has_data = false;
+static bool					apply_replay_spill_reader_started = false;
+static Size					apply_replay_spill_bytes = 0;
 
 typedef struct SpockApplyFunctions
 {
@@ -294,9 +301,13 @@ static void update_progress_entry(Oid target_node_id,
 static void check_and_update_progress(XLogRecPtr last_received_lsn,
 								TimestampTz timestamp);
 
-static ApplyReplayEntry *apply_replay_entry_create(int r, char *buf);
+static ApplyReplayEntry *apply_replay_entry_create(int r, char *buf, bool from_pq);
 static void apply_replay_entry_free(ApplyReplayEntry *entry);
 static void apply_replay_queue_reset(void);
+
+/* Spill helper function declarations */
+
+static void apply_replay_spill_reset(void);
 static void maybe_send_feedback(PGconn *applyconn, XLogRecPtr lsn_to_send,
 								TimestampTz *last_receive_timestamp);
 static void append_feedback_position(XLogRecPtr recvpos);
@@ -2789,12 +2800,18 @@ stream_replay:
 
 	need_replay = false;
 
+	/* If we have spilled frames and are re-entering, prepare the reader */
+	if (apply_replay_spill_has_data && !apply_replay_spill_reader_started)
+	{
+		if (spock_spill_active() && spock_spill_reader_start())
+			apply_replay_spill_reader_started = true;
+	}
+
 	PG_TRY();
 	{
 		while (!got_SIGTERM)
 		{
 			int			rc;
-			int			r;
 
             MySpockWorker->worker_status = SPOCK_WORKER_STATUS_RUNNING;
 
@@ -2864,67 +2881,164 @@ stream_replay:
 
 			for (;;)
 			{
-				ApplyReplayEntry   *entry;
-				bool				queue_append;
-				StringInfo			msg;
-				int					c;
+				int   r;
+				char *buf = NULL;
+				ApplyReplayEntry *entry;
+				StringInfo msg;
+				int c;
 
-				if (got_SIGTERM)
-					break;
+				char type0; /* For type peeking */
+				bool from_spill = false;   /* NEW: track spill source */
 
-				if (apply_replay_next == NULL)
+				CHECK_FOR_INTERRUPTS();
+
+				/* Prefer draining spill first (if any) */
+				if (apply_replay_spill_has_data && spock_spill_active())
 				{
-					char   *buf;
+					StringInfoData si;
+					MemSet(&si, 0, sizeof(si));
 
-					/* We are not in replay mode so receive from the stream */
+					if (!apply_replay_spill_reader_started)
+					{
+						if (!spock_spill_reader_start())
+						{
+							/* Couldn't start reader; end spill and fall back to stream */
+							spock_spill_end();
+							apply_replay_spill_has_data = false;
+							apply_replay_spill_reader_started = false;
+							goto read_stream;
+						}
+						apply_replay_spill_reader_started = true;
+					}
+
+					/* Read a single spilled frame */
+					MemoryContext oldcxt;
+					bool ok;
+					{
+						oldcxt = CurrentMemoryContext;
+						MemoryContextSwitchTo(MessageContext);
+						ok = spock_spill_reader_next(&si);
+						MemoryContextSwitchTo(oldcxt);
+
+						if (!ok)
+						{
+							/* EOF: finish spill and continue with stream */
+							spock_spill_end();
+							apply_replay_spill_has_data = false;
+							apply_replay_spill_reader_started = false;
+							goto read_stream;
+						}
+					}
+
+					entry = apply_replay_entry_create(si.len, si.data, false);
+					entry->from_pq = false; /* buffer is palloc'd, not libpq */
+					from_spill = true;
+					elog(DEBUG2, "SPOCK %s: source=spill len=%d",
+						 MySubscription->name, entry->copydata.len);
+				}
+				else if (apply_replay_next == NULL)
+				{
+read_stream:
 					r = PQgetCopyData(applyconn, &buf, 1);
-
 					last_receive_timestamp = GetCurrentTimestamp();
 
-					/* Check for errors */
 					if (r == -1)
 					{
-						if (buf != NULL)
-							PQfreemem(buf);
-						elog(ERROR, "SPOCK %s: data stream ended",
-							 MySubscription->name);
+						if (buf != NULL) PQfreemem(buf);
+						elog(ERROR, "SPOCK %s: data stream ended", MySubscription->name);
 					}
 					else if (r == -2)
 					{
-						if (buf != NULL)
-							PQfreemem(buf);
+						if (buf != NULL) PQfreemem(buf);
 						elog(ERROR, "SPOCK %s: could not read COPY data: %s",
-							 MySubscription->name,
-							 PQerrorMessage(applyconn));
+							 MySubscription->name, PQerrorMessage(applyconn));
 					}
-					else if (r < 0)
+					else if (r <= 0)
 					{
-						if (buf != NULL)
-							PQfreemem(buf);
-						elog(ERROR, "SPOCK %s: invalid COPY status %d",
-							 MySubscription->name, r);
-					}
-					else if (r == 0)
-					{
-						/* need to wait for new data */
-						if (buf != NULL)
-							PQfreemem(buf);
+						if (buf != NULL) PQfreemem(buf);
 						break;
 					}
 
-					/*
-					 * We have a valid message, create an apply queue
-					 * entry but don't add it to the queue yet.
-					 */
-					entry = apply_replay_entry_create(r, buf);
-					queue_append = true;
+					/* Hard cap: ensure the frame can be represented safely */
+					if ((Size) r > (Size) (MaxAllocSize - 1))
+					{
+						PQfreemem(buf);
+						ereport(ERROR,
+								(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+								 errmsg("SPOCK %s: incoming frame too large: %d (max %zu)",
+										MySubscription->name, r, (size_t) (MaxAllocSize - 1))));
+					}
+
+					/* Peek type without mutating cursor */
+					type0 = buf[0];
+
+					/* Spill ONLY a single large 'w' frame (>= replay_queue_size) */
+					if (type0 == 'w' && (Size) r >= (Size) spock_replay_queue_size)
+					{
+						/* Ensure spill is started */
+						if (!spock_spill_active() && !spock_spill_begin())
+						{
+							PQfreemem(buf);
+							ereport(ERROR,
+									(errmsg("SPOCK %s: failed to start spill for frame %d",
+											MySubscription->name, r)));
+						}
+
+						if (!spock_spill_write_frame(buf, (Size) r))
+						{
+							PQfreemem(buf);
+							ereport(ERROR,
+									(errmsg("SPOCK %s: failed to spill frame of size %d",
+											MySubscription->name, r)));
+						}
+
+						apply_replay_spill_has_data = true;
+						apply_replay_spill_reader_started = false; /* start reader on drain */
+						PQfreemem(buf);
+						/* Drain spill on next iteration */
+						continue;
+					}
+
+					/* Normal path: wrap in ApplyReplayEntry and proceed */
+					entry = apply_replay_entry_create(r, buf, true);
+					elog(DEBUG2, "SPOCK %s: source=stream len=%d",
+						 MySubscription->name, entry->copydata.len);
 				}
 				else
 				{
-					/* We are in replay mode so present the next queue entry */
 					entry = apply_replay_next;
 					apply_replay_next = apply_replay_next->next;
-					queue_append = false;
+					elog(DEBUG2, "SPOCK %s: source=in-memory len=%d",
+						 MySubscription->name, entry ? entry->copydata.len : -1);
+				}
+
+
+
+				/* Hard guards against corrupt/empty frames */
+				if (entry == NULL ||
+					entry->copydata.data == NULL ||
+					entry->copydata.len <= 0)
+				{
+					elog(WARNING, "SPOCK %s: dropping invalid frame (entry=%p, data=%p, len=%d)",
+						 MySubscription->name,
+						 (void *)entry,
+						 entry ? (void *)entry->copydata.data : NULL,
+						 entry ? entry->copydata.len : -1);
+					if (entry)
+						apply_replay_entry_free(entry);
+					continue;
+				}
+
+				/* Handle the message received or replayed */
+				msg = &entry->copydata;
+
+				/* Safety: make sure we can read at least 1 byte for type */
+				if (msg->len < 1)
+				{
+					elog(WARNING, "SPOCK %s: frame too short to contain type byte (len=%d)",
+						 MySubscription->name, msg->len);
+					apply_replay_entry_free(entry);
+					continue;
 				}
 
 				if (ConfigReloadPending)
@@ -2933,10 +3047,12 @@ stream_replay:
 					ProcessConfigFile(PGC_SIGHUP);
 				}
 
-				/* Handle the message received or replayed */
-				msg = &entry->copydata;
 				msg->cursor = 0;
 				c = pq_getmsgbyte(msg);
+
+				/* Quieter per-frame log */
+				elog(DEBUG2, "SPOCK %s: frame type='%c' len=%d spill_active=%d",
+					 MySubscription->name, c, msg->len, (int) spock_spill_active());
 
 				if (c == 'w')
 				{
@@ -2962,38 +3078,12 @@ stream_replay:
 					if (last_received < end_lsn)
 						last_received = end_lsn;
 
-					/*
-					 * Append the entry to the end of the replay queue
-					 * if we read it from the stream but check for overflow.
-					 */
-					if (queue_append)
-					{
-						apply_replay_bytes += msg->len;
-
-						if (apply_replay_bytes < spock_replay_queue_size)
-						{
-							if (apply_replay_head == NULL)
-							{
-								apply_replay_head = apply_replay_tail = entry;
-							}
-							else
-							{
-								apply_replay_tail->next = entry;
-								apply_replay_tail = entry;
-							}
-						}
-						else
-						{
-							apply_replay_overflow = true;
-						}
-					}
-
 					replication_handler(msg);
 
-					if (queue_append && apply_replay_overflow)
-					{
-						apply_replay_entry_free(entry);
-					}
+					/* Immediate processing: no queue byte accounting */
+					(void) from_spill; /* reserved for future counters */
+					apply_replay_entry_free(entry);
+					entry = NULL;
 				}
 				else if (c == 'k')
 				{
@@ -3020,10 +3110,11 @@ stream_replay:
 				else
 				{
 					/*
-					 * Other message types are purposefully ignored and
-					 * we don't add them to the replay queue.
+					 * Purposefully ignore other message types and do not queue/spill.
+					 * Always free the entry here.
 					 */
 					apply_replay_entry_free(entry);
+					entry = NULL;
 				}
 
 				/* We must not have fallen out of MessageContext by accident */
@@ -4132,7 +4223,7 @@ spock_apply_main(Datum main_arg)
 
 /* Create a new apply reply queue entry in the ApplyReplayContext */
 static ApplyReplayEntry *
-apply_replay_entry_create(int r, char *buf)
+apply_replay_entry_create(int r, char *buf, bool from_pq)
 {
 	MemoryContext		oldcontext;
 	ApplyReplayEntry   *entry;
@@ -4143,6 +4234,7 @@ apply_replay_entry_create(int r, char *buf)
 	oldcontext = MemoryContextSwitchTo(ApplyReplayContext);
 
 	entry = (ApplyReplayEntry *)palloc(sizeof(ApplyReplayEntry));
+	entry->from_pq = from_pq;           /* caller specifies buffer ownership */
 	entry->copydata.len = r;
 	entry->copydata.maxlen = -1;
 	entry->copydata.cursor = 0;
@@ -4158,7 +4250,14 @@ apply_replay_entry_create(int r, char *buf)
 static void
 apply_replay_entry_free(ApplyReplayEntry *entry)
 {
-	PQfreemem(entry->copydata.data);
+	if (entry == NULL)
+		return;
+
+	if (entry->from_pq)
+		PQfreemem(entry->copydata.data);
+	else
+		pfree(entry->copydata.data);
+
 	pfree(entry);
 }
 
@@ -4166,11 +4265,20 @@ apply_replay_entry_free(ApplyReplayEntry *entry)
 static void
 apply_replay_queue_reset(void)
 {
-	ApplyReplayEntry   *entry;
+	ApplyReplayEntry *entry = apply_replay_head;
+	ApplyReplayEntry *next;
 
-	for (entry = apply_replay_head; entry != NULL; entry = entry->next)
+	while (entry != NULL)
 	{
-		PQfreemem(entry->copydata.data);
+		next = entry->next;
+
+		if (entry->from_pq)
+			PQfreemem(entry->copydata.data);
+		else
+			pfree(entry->copydata.data);
+
+		pfree(entry);
+		entry = next;
 	}
 
 	apply_replay_head = NULL;
@@ -4179,7 +4287,31 @@ apply_replay_queue_reset(void)
 	apply_replay_bytes = 0;
 	apply_replay_overflow = false;
 
+	/* Drop spill temp state if any */
+	apply_replay_spill_reset();
+
 	MemoryContextReset(ApplyReplayContext);
+}
+
+/* --- Spill helpers ------------------------------------------------------ */
+
+
+
+
+
+
+
+static void
+apply_replay_spill_reset(void)
+{
+	if (apply_spill_started)
+	{
+		spock_spill_end();
+		apply_spill_started = false;
+	}
+	apply_replay_spill_has_data = false;
+	apply_replay_spill_reader_started = false;
+	apply_replay_spill_bytes = 0;
 }
 
 /*
