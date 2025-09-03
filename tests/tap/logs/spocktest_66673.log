@@ -1,0 +1,153 @@
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_0_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_0_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_1_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_1_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_2_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_2_datadir -l logfile start
+
+2025-09-03 18:52:09.670 PKT [66713] DEBUG:  registering background worker "logical replication launcher"
+2025-09-03 18:52:09.672 PKT [66713] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-09-03 18:52:09.672 PKT [66713] DEBUG:  registering background worker "spock supervisor"
+2025-09-03 18:52:09.672 PKT [66713] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-09-03 18:52:09.672 PKT [66713] DEBUG:  loaded library "spock"
+2025-09-03 18:52:09.673 PKT [66715] DEBUG:  registering background worker "logical replication launcher"
+2025-09-03 18:52:09.674 PKT [66715] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-09-03 18:52:09.674 PKT [66715] DEBUG:  registering background worker "spock supervisor"
+2025-09-03 18:52:09.674 PKT [66715] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-09-03 18:52:09.674 PKT [66715] DEBUG:  loaded library "spock"
+2025-09-03 18:52:09.678 PKT [66713] LOG:  redirecting log output to logging collector process
+2025-09-03 18:52:09.678 PKT [66713] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/logs".
+2025-09-03 18:52:09.679 PKT [66715] LOG:  redirecting log output to logging collector process
+2025-09-03 18:52:09.679 PKT [66715] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/logs".
+2025-09-03 18:52:09.683 PKT [66717] DEBUG:  registering background worker "logical replication launcher"
+2025-09-03 18:52:09.684 PKT [66717] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-09-03 18:52:09.684 PKT [66717] DEBUG:  registering background worker "spock supervisor"
+2025-09-03 18:52:09.684 PKT [66717] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-09-03 18:52:09.684 PKT [66717] DEBUG:  loaded library "spock"
+2025-09-03 18:52:09.693 PKT [66717] LOG:  redirecting log output to logging collector process
+2025-09-03 18:52:09.693 PKT [66717] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/logs".
+CREATE ROLE
+CREATE ROLE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+127.0.0.1:5441 - accepting connections
+127.0.0.1:5442 - accepting connections
+127.0.0.1:5443 - accepting connections
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        1
+(1 row)
+
+ node_create 
+-------------
+       49708
+(1 row)
+
+ node_create 
+-------------
+       26863
+(1 row)
+
+ node_create 
+-------------
+        9057
+(1 row)
+
+2025-09-03 18:53:09.692 PKT [66720] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:09.692 PKT [66720] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:09.695 PKT [66720] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:09.696 PKT [66720] DEBUG:  logger shutting down
+2025-09-03 18:53:22.930 PKT [66719] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:22.931 PKT [66719] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:22.931 PKT [66719] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:22.934 PKT [66719] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-09-03 18:53:22.935 PKT [66719] DEBUG:  logger shutting down

@@ -1,0 +1,77 @@
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_0_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_0_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_1_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_1_datadir -l logfile start
+
+2025-08-28 13:41:52.864 PKT [58181] DEBUG:  registering background worker "logical replication launcher"
+2025-08-28 13:41:52.865 PKT [58181] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-08-28 13:41:52.865 PKT [58181] DEBUG:  registering background worker "spock supervisor"
+2025-08-28 13:41:52.865 PKT [58181] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-08-28 13:41:52.865 PKT [58181] DEBUG:  loaded library "spock"
+2025-08-28 13:41:52.867 PKT [58183] DEBUG:  registering background worker "logical replication launcher"
+2025-08-28 13:41:52.868 PKT [58183] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-08-28 13:41:52.868 PKT [58183] DEBUG:  registering background worker "spock supervisor"
+2025-08-28 13:41:52.868 PKT [58183] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-08-28 13:41:52.868 PKT [58183] DEBUG:  loaded library "spock"
+2025-08-28 13:41:52.868 PKT [58181] LOG:  redirecting log output to logging collector process
+2025-08-28 13:41:52.868 PKT [58181] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/tap/logs".
+2025-08-28 13:41:52.871 PKT [58183] LOG:  redirecting log output to logging collector process
+2025-08-28 13:41:52.871 PKT [58183] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/tap/logs".
+interrupted by SIGINT at 008_max_transaction_size.pl line 16.
+ at 008_max_transaction_size.pl line 15.
+	main::__ANON__("interrupted by SIGINT at 008_max_transaction_size.pl line 16.\x{a}") called at 008_max_transaction_size.pl line 16
+	main::__ANON__("INT") called at SpockTest.pm line 66
+	eval {...} called at SpockTest.pm line 66
+	SpockTest::_run_cmd_logged_wait("sleep", 17) called at SpockTest.pm line 99
+	SpockTest::system_or_bail("sleep", 17) called at SpockTest.pm line 221
+	SpockTest::create_cluster(2, "Create 2-node max_transaction_size test cluster") called at 008_max_transaction_size.pl line 19
+ at 008_max_transaction_size.pl line 15.
+	main::__ANON__("interrupted by SIGINT at 008_max_transaction_size.pl line 16."...) called at SpockTest.pm line 66
+	SpockTest::_run_cmd_logged_wait("sleep", 17) called at SpockTest.pm line 99
+	SpockTest::system_or_bail("sleep", 17) called at SpockTest.pm line 221
+	SpockTest::create_cluster(2, "Create 2-node max_transaction_size test cluster") called at 008_max_transaction_size.pl line 19
+2025-08-28 13:42:06.804 PKT [58189] DEBUG:  logger shutting down
+2025-08-28 13:42:06.804 PKT [58185] DEBUG:  logger shutting down

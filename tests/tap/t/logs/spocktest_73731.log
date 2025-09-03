@@ -1,0 +1,121 @@
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_0_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_0_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_1_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_1_datadir -l logfile start
+
+2025-08-28 14:21:16.672 PKT [73757] DEBUG:  registering background worker "logical replication launcher"
+2025-08-28 14:21:16.674 PKT [73759] DEBUG:  registering background worker "logical replication launcher"
+2025-08-28 14:21:17.641 PKT [73757] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-08-28 14:21:17.641 PKT [73759] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-08-28 14:21:17.641 PKT [73757] DEBUG:  registering background worker "spock supervisor"
+2025-08-28 14:21:17.641 PKT [73759] DEBUG:  registering background worker "spock supervisor"
+2025-08-28 14:21:17.641 PKT [73757] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-08-28 14:21:17.641 PKT [73759] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-08-28 14:21:17.641 PKT [73759] DEBUG:  loaded library "spock"
+2025-08-28 14:21:17.641 PKT [73757] DEBUG:  loaded library "spock"
+2025-08-28 14:21:17.650 PKT [73759] LOG:  redirecting log output to logging collector process
+2025-08-28 14:21:17.650 PKT [73759] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/tap/logs".
+2025-08-28 14:21:17.650 PKT [73757] LOG:  redirecting log output to logging collector process
+2025-08-28 14:21:17.650 PKT [73757] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/tap/logs".
+CREATE ROLE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+127.0.0.1:5441 - accepting connections
+127.0.0.1:5442 - accepting connections
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        1
+(1 row)
+
+ node_create 
+-------------
+       49708
+(1 row)
+
+ node_create 
+-------------
+       26863
+(1 row)
+
+SET
+SET
+ERROR:  1000000 is outside the valid range for parameter "spock.max_transaction_size" (1048576 .. 1073741824)
+Command failed with exit code 1: /usr/local/pgsql.16/bin/psql -p 5441 -d regression -c ALTER SYSTEM SET spock.max_transaction_size = '1000000' at SpockTest.pm line 101.
+ at 008_max_transaction_size.pl line 15.
+	main::__ANON__("Command failed with exit code 1: /usr/local/pgsql.16/bin/psql"...) called at SpockTest.pm line 101
+	SpockTest::system_or_bail("/usr/local/pgsql.16/bin/psql", "-p", 5441, "-d", "regression", "-c", "ALTER SYSTEM SET spock.max_transaction_size = '1000000'") called at 008_max_transaction_size.pl line 73
+ERROR:  subscriber sub_n1_n2 not found
+ERROR:  subscriber sub_n2_n1 not found
+ node_drop 
+-----------
+ t
+(1 row)
+
+ node_drop 
+-----------
+ t
+(1 row)
+
+waiting for server to shut down....2025-08-28 14:21:33.968 PKT [73764] DEBUG:  logger shutting down
+waiting for server to shut down....2025-08-28 14:21:33.971 PKT [73763] DEBUG:  logger shutting down
+ done
+server stopped
+ done
+server stopped

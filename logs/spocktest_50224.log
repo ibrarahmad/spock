@@ -1,0 +1,3 @@
+Bareword found where operator expected (Missing operator before "Second"?) at -e line 1, near "' -t -c "SELECT node_id FROM spock.node WHERE node_name = \'n1\';"); print 'Second"
+syntax error at -e line 1, near "' -t -c "SELECT node_id FROM spock.node WHERE node_name = \'n1\';"); print 'Second node "
+Execution of -e aborted due to compilation errors.

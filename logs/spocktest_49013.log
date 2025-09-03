@@ -1,0 +1,174 @@
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_0_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_0_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_1_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_1_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_2_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_2_datadir -l logfile start
+
+2025-09-03 17:35:27.314 PKT [49053] DEBUG:  registering background worker "logical replication launcher"
+2025-09-03 17:35:27.316 PKT [49053] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-09-03 17:35:27.316 PKT [49053] DEBUG:  registering background worker "spock supervisor"
+2025-09-03 17:35:27.316 PKT [49053] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-09-03 17:35:27.316 PKT [49053] DEBUG:  loaded library "spock"
+2025-09-03 17:35:27.317 PKT [49055] DEBUG:  registering background worker "logical replication launcher"
+2025-09-03 17:35:27.317 PKT [49055] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-09-03 17:35:27.317 PKT [49055] DEBUG:  registering background worker "spock supervisor"
+2025-09-03 17:35:27.317 PKT [49055] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-09-03 17:35:27.317 PKT [49055] DEBUG:  loaded library "spock"
+2025-09-03 17:35:27.320 PKT [49053] LOG:  redirecting log output to logging collector process
+2025-09-03 17:35:27.320 PKT [49053] HINT:  Future log output will appear in directory "/Users/pgedge/logs".
+2025-09-03 17:35:27.321 PKT [49057] DEBUG:  registering background worker "logical replication launcher"
+2025-09-03 17:35:27.321 PKT [49055] LOG:  redirecting log output to logging collector process
+2025-09-03 17:35:27.321 PKT [49055] HINT:  Future log output will appear in directory "/Users/pgedge/logs".
+2025-09-03 17:35:27.322 PKT [49057] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-09-03 17:35:27.322 PKT [49057] DEBUG:  registering background worker "spock supervisor"
+2025-09-03 17:35:27.322 PKT [49057] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-09-03 17:35:27.322 PKT [49057] DEBUG:  loaded library "spock"
+2025-09-03 17:35:27.327 PKT [49057] LOG:  redirecting log output to logging collector process
+2025-09-03 17:35:27.327 PKT [49057] HINT:  Future log output will appear in directory "/Users/pgedge/logs".
+CREATE ROLE
+CREATE ROLE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+127.0.0.1:5441 - accepting connections
+127.0.0.1:5442 - accepting connections
+127.0.0.1:5443 - accepting connections
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        1
+(1 row)
+
+ node_create 
+-------------
+       49708
+(1 row)
+
+ node_create 
+-------------
+       26863
+(1 row)
+
+ node_create 
+-------------
+        9057
+(1 row)
+
+ERROR:  subscriber sub_n1_n2 not found
+ERROR:  subscriber sub_n1_n3 not found
+ERROR:  subscriber sub_n2_n1 not found
+ERROR:  subscriber sub_n2_n3 not found
+ERROR:  subscriber sub_n3_n1 not found
+ERROR:  subscriber sub_n3_n2 not found
+ node_drop 
+-----------
+ t
+(1 row)
+
+ node_drop 
+-----------
+ t
+(1 row)
+
+ node_drop 
+-----------
+ t
+(1 row)
+
+waiting for server to shut down....waiting for server to shut down....2025-09-03 17:35:47.496 PKT [49059] DEBUG:  logger shutting down
+2025-09-03 17:35:47.498 PKT [49060] DEBUG:  logger shutting down
+waiting for server to shut down....2025-09-03 17:35:47.501 PKT [49077] DEBUG:  logger shutting down
+ done
+server stopped
+ done
+server stopped
+ done
+server stopped

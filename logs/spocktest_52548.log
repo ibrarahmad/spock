@@ -1,0 +1,4 @@
+Bareword found where operator expected (Do you need to predeclare "print"?) at -e line 7, near "print 'Node"
+  (Might be a runaway multi-line '' string starting on line 6)
+syntax error at -e line 7, near "print 'Node "
+Execution of -e aborted due to compilation errors.

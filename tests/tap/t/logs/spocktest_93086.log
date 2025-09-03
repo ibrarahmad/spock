@@ -1,0 +1,23 @@
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_0_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... 2025-09-03 08:44:17.083 PKT [93097] FATAL:  canceling statement due to user request
+2025-09-03 08:44:17.083 PKT [93097] CONTEXT:  while scanning relation "pg_catalog.pg_ts_dict"
+2025-09-03 08:44:17.083 PKT [93097] STATEMENT:  VACUUM FREEZE;
+	
+child process exited with exit code 1
+initdb: removing data directory "/tmp/tmp_spock_node_0_datadir"

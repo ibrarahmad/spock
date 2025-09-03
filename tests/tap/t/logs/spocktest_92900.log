@@ -1,0 +1,258 @@
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_0_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_0_datadir -l logfile start
+
+The files belonging to this database system will be owned by user "pgedge".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+creating directory /tmp/tmp_spock_node_1_datadir ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default max_connections ... 100
+selecting default shared_buffers ... 128MB
+selecting default time zone ... Asia/Karachi
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    /usr/local/pgsql.16/bin/pg_ctl -D /tmp/tmp_spock_node_1_datadir -l logfile start
+
+2025-08-28 15:49:45.793 PKT [92926] DEBUG:  registering background worker "logical replication launcher"
+2025-08-28 15:49:45.795 PKT [92926] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-08-28 15:49:45.795 PKT [92926] DEBUG:  registering background worker "spock supervisor"
+2025-08-28 15:49:45.795 PKT [92926] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-08-28 15:49:45.795 PKT [92926] DEBUG:  loaded library "spock"
+2025-08-28 15:49:45.796 PKT [92928] DEBUG:  registering background worker "logical replication launcher"
+2025-08-28 15:49:45.796 PKT [92928] WARNING:  invalid value for parameter "spock.exception_replay_queue_size": "1MB"
+2025-08-28 15:49:45.796 PKT [92928] DEBUG:  registering background worker "spock supervisor"
+2025-08-28 15:49:45.796 PKT [92928] DEBUG:  registering background worker "spock_failover_slots worker"
+2025-08-28 15:49:45.796 PKT [92928] DEBUG:  loaded library "spock"
+2025-08-28 15:49:45.798 PKT [92926] LOG:  redirecting log output to logging collector process
+2025-08-28 15:49:45.798 PKT [92926] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/tap/logs".
+2025-08-28 15:49:45.812 PKT [92928] LOG:  redirecting log output to logging collector process
+2025-08-28 15:49:45.812 PKT [92928] HINT:  Future log output will appear in directory "/Users/pgedge/spock-ibrar/tests/tap/logs".
+CREATE ROLE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE DATABASE
+CREATE ROLE
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+CREATE EXTENSION
+NOTICE:  version "6.0.0-devel" of extension "spock" is already installed
+ALTER EXTENSION
+127.0.0.1:5441 - accepting connections
+127.0.0.1:5442 - accepting connections
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        1
+(1 row)
+
+ node_create 
+-------------
+       49708
+(1 row)
+
+ node_create 
+-------------
+       26863
+(1 row)
+
+SET
+SET
+WARNING:  This DDL statement will not be replicated.
+ALTER SYSTEM
+WARNING:  This DDL statement will not be replicated.
+ALTER SYSTEM
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+INFO:  DDL statement replicated.
+CREATE TABLE
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+ sub_create 
+------------
+ 3848008564
+(1 row)
+
+ERROR:  subscriber sub_n1_n2 not found
+ERROR:  subscriber sub_n2_n1 not found
+ERROR:  cannot drop node "n1" because one or more replication slots for the node are still active
+HINT:  drop the subscriptions connected to the node first
+Command failed with exit code 1: /usr/local/pgsql.16/bin/psql -p 5441 -d regression -c SELECT spock.node_drop('n1') at SpockTest.pm line 101.
+ at 008_max_transaction_size.pl line 15.
+	main::__ANON__("Command failed with exit code 1: /usr/local/pgsql.16/bin/psql"...) called at SpockTest.pm line 101
+	SpockTest::system_or_bail("/usr/local/pgsql.16/bin/psql", "-p", 5441, "-d", "regression", "-c", "SELECT spock.node_drop('n1')") called at SpockTest.pm line 362
+	SpockTest::destroy_cluster() called at SpockTest.pm line 390
+	SpockTest::END() called at 008_max_transaction_size.pl line 0
+	eval {...} called at 008_max_transaction_size.pl line 0
+END failed--call queue aborted.
+ at 008_max_transaction_size.pl line 15.
+	main::__ANON__("Command failed with exit code 1: /usr/local/pgsql.16/bin/psql"...) called at 008_max_transaction_size.pl line 0
+2025-08-28 15:53:23.251 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.832 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.832 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.852 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.852 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.858 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.858 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.876 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:26.877 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:43.150 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.446 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.447 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.448 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.448 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.448 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.448 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.449 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.449 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.449 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.449 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.450 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.450 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.451 PKT [92930] LOG:  could not open file "current_logfiles.tmp": No such file or directory
+2025-08-28 15:53:59.451 PKT [92930] DEBUG:  logger shutting down
+2025-08-28 15:53:59.452 PKT [92940] DEBUG:  logger shutting down

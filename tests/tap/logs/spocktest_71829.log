@@ -1,0 +1,3 @@
+Backticks found where operator expected (Missing semicolon on previous line?) at t/001_basic.pl line 104, near "my $test1_updated_provider = `"
+syntax error at t/001_basic.pl line 104, near "my $test1_updated_provider = `"
+t/001_basic.pl had compilation errors.
