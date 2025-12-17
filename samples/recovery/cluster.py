@@ -112,10 +112,12 @@ class OutputFormatter:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     def _format_line(self, status: str, statement: str, elapsed: Optional[str] = None, 
-                     port: Optional[int] = None, indent: int = 0) -> str:
+                     port: Optional[int] = None, indent: int = 0, show_elapsed: bool = True) -> str:
         """Format a single line with perfect column alignment."""
-        if elapsed is None:
+        if elapsed is None and show_elapsed:
             elapsed = self._get_elapsed()
+        elif not show_elapsed:
+            elapsed = ""
         
         timestamp = self._get_timestamp()
         
@@ -138,11 +140,11 @@ class OutputFormatter:
         # Timestamp: 19 chars (YYYY-MM-DD HH:MM:SS)
         timestamp_col = timestamp
         
-        # Port: 8 chars ( [XXXX] format, padded)
+        # Port: always 8 chars for alignment - format as " [port]" if provided, 8 spaces if not
         if port is not None:
             port_col = f" [{port}]"
         else:
-            port_col = "        "  # 8 spaces
+            port_col = "        "  # 8 spaces to maintain column alignment
         
         # Statement: truncate if too long (but preserve full message for errors)
         # For errors, show full message on separate lines to maintain elapsed time alignment
@@ -180,7 +182,10 @@ class OutputFormatter:
             if len(statement_col) > STATEMENT_WIDTH:
                 lines = []
                 # First line with truncated message and elapsed time (aligned)
-                first_line = f"{indent_str}{status_col} {timestamp_col}{port_col}: {statement_col[:57]:<57}... {elapsed:>10}"
+                if elapsed:
+                    first_line = f"{indent_str}{status_col} {timestamp_col}{port_col}:{statement_col[:57]:<57}... {elapsed:>10}"
+                else:
+                    first_line = f"{indent_str}{status_col} {timestamp_col}{port_col}:{statement_col[:57]}..."
                 lines.append(first_line)
                 # Additional lines with continuation
                 cont_indent = len(indent_str) + 31
@@ -191,30 +196,36 @@ class OutputFormatter:
                     lines.append(f"{' ' * cont_indent}{chunk}")
                 return "\n".join(lines)
             else:
-                line = f"{indent_str}{status_col} {timestamp_col}{port_col}: {statement_col:<{STATEMENT_WIDTH}} {elapsed:>10}"
+                if elapsed:
+                    line = f"{indent_str}{status_col} {timestamp_col}{port_col}:{statement_col:<{STATEMENT_WIDTH}} {elapsed:>10}"
+                else:
+                    line = f"{indent_str}{status_col} {timestamp_col}{port_col}:{statement_col:<{STATEMENT_WIDTH}}"
                 return line
         else:
             # For non-errors, truncate if too long
             if len(statement_col) > STATEMENT_WIDTH:
                 statement_col = statement_col[:57] + "..."
-            line = f"{indent_str}{status_col} {timestamp_col}{port_col}: {statement_col:<{STATEMENT_WIDTH}} {elapsed:>10}"
+            if elapsed:
+                line = f"{indent_str}{status_col} {timestamp_col}{port_col}:{statement_col:<{STATEMENT_WIDTH}} {elapsed:>10}"
+            else:
+                line = f"{indent_str}{status_col} {timestamp_col}{port_col}:{statement_col:<{STATEMENT_WIDTH}}"
             return line
     
-    def success(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0):
+    def success(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0, show_elapsed: bool = True):
         """Print success message."""
-        print(self._format_line('✓', statement, elapsed, port, indent))
+        print(self._format_line('✓', statement, elapsed, port, indent, show_elapsed))
     
-    def error(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0):
+    def error(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0, show_elapsed: bool = True):
         """Print error message."""
-        print(self._format_line('✗', statement, elapsed, port, indent))
+        print(self._format_line('✗', statement, elapsed, port, indent, show_elapsed))
     
-    def warning(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0):
+    def warning(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0, show_elapsed: bool = True):
         """Print warning message."""
-        print(self._format_line('⚠', statement, elapsed, port, indent))
+        print(self._format_line('⚠', statement, elapsed, port, indent, show_elapsed))
     
-    def info(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0):
+    def info(self, statement: str, elapsed: Optional[str] = None, port: Optional[int] = None, indent: int = 0, show_elapsed: bool = True):
         """Print info message with optional indentation."""
-        print(self._format_line(' ', statement, elapsed, port, indent))
+        print(self._format_line(' ', statement, elapsed, port, indent, show_elapsed))
     
     def substep(self, statement: str, indent: int = 1):
         """Print a sub-step with indentation."""
@@ -346,7 +357,11 @@ class PostgresManager:
         # Check if Spock library exists
         pg_bin = self._find_postgres_binary()
         pg_lib = pg_bin.parent / "lib"
-        spock_lib = pg_lib / "spock.so"
+        # Check for platform-specific library extension
+        if platform.system() == 'Darwin':
+            spock_lib = pg_lib / "spock.dylib"
+        else:
+            spock_lib = pg_lib / "spock.so"
         has_spock = spock_lib.exists()
         # Now that we've fixed the compilation issue, we can use shared_preload_libraries
         use_shared_preload = True
@@ -361,6 +376,10 @@ class PostgresManager:
             # Note: shared_preload_libraries will be set only if Spock is available
             # We'll check and set this conditionally
             'track_commit_timestamp': 'on',
+            
+            # Disable autovacuum to prevent catalog_xmin advancement
+            # This is critical for disaster recovery - keeps recovery slot's catalog_xmin valid
+            'autovacuum': 'off',
             
             # Spock-specific settings
             'spock.enable_ddl_replication': 'on',
@@ -532,6 +551,13 @@ class PostgresManager:
     
     def execute_sql(self, conn, sql: str, params: Tuple = None):
         """Execute SQL statement."""
+        if self.formatter.verbose:
+            # Show complete query in verbose mode
+            sql_display = sql.strip()
+            if params:
+                sql_display = f"{sql_display} | params: {params}"
+            print(f"QUERY: {sql_display}")
+        
         try:
             with conn.cursor() as cur:
                 if params:
@@ -539,6 +565,9 @@ class PostgresManager:
                 else:
                     cur.execute(sql)
             conn.commit()
+            
+            if self.formatter.verbose:
+                print("RESULT: OK (executed successfully)")
         except Psycopg2Error as e:
             conn.rollback()
             # Format SQL command for display (single line, clean)
@@ -549,13 +578,33 @@ class PostgresManager:
     
     def fetch_sql(self, conn, sql: str, params: Tuple = None):
         """Execute SQL and fetch results."""
+        if self.formatter.verbose:
+            # Show complete query in verbose mode
+            sql_display = sql.strip()
+            if params:
+                sql_display = f"{sql_display} | params: {params}"
+            print(f"QUERY: {sql_display}")
+        
         try:
             with conn.cursor() as cur:
                 if params:
                     cur.execute(sql, params)
                 else:
                     cur.execute(sql)
-                return cur.fetchall()
+                results = cur.fetchall()
+                
+                if self.formatter.verbose:
+                    if results:
+                        print(f"RESULT: {len(results)} row(s)")
+                        # Show first few rows if verbose
+                        for i, row in enumerate(results[:5]):  # Show first 5 rows
+                            print(f"  Row {i+1}: {row}")
+                        if len(results) > 5:
+                            print(f"  ... and {len(results) - 5} more row(s)")
+                    else:
+                        print("RESULT: 0 rows")
+                
+                return results
         except Psycopg2Error as e:
             raise RuntimeError(f"SQL execution failed: {e}") from e
 
@@ -575,7 +624,7 @@ class SpockSetup:
     
     def setup_cluster(self, port_start: int):
         """Set up Spock cluster with cross-wired nodes."""
-        self.formatter.success("Cross-wiring nodes", port=None, indent=0)
+        self.formatter.success("Cross-wiring nodes", port=None, indent=0, show_elapsed=False)
         node_dsns = {}
         for i in range(self.config.NUM_NODES):
             port = port_start + i
@@ -587,9 +636,44 @@ class SpockSetup:
             try:
                 conn = self.pg_manager.connect(port)
                 
-                # Create extension
+                # Create or update extension
                 try:
-                    self.pg_manager.execute_sql(conn, "CREATE EXTENSION IF NOT EXISTS spock;")
+                    # Check if extension exists and get its version
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT extversion FROM pg_extension WHERE extname = 'spock';")
+                        result = cur.fetchone()
+                    
+                    if result and result[0]:
+                        current_version = result[0]
+                        # If extension exists, try to update it to latest
+                        try:
+                            self.pg_manager.execute_sql(conn, 
+                                "ALTER EXTENSION spock UPDATE TO '6.0.1-devel';")
+                            self.formatter.success(
+                                f"Updated Spock extension from {current_version} to 6.0.1-devel",
+                                port=port, indent=1
+                            )
+                        except Exception as update_err:
+                            # If update fails (e.g., already at latest or version doesn't exist), try without version
+                            try:
+                                self.pg_manager.execute_sql(conn, 
+                                    "ALTER EXTENSION spock UPDATE;")
+                            except:
+                                pass  # Ignore update errors - extension is already at latest or update not needed
+                    else:
+                        # Extension doesn't exist, create it
+                        self.pg_manager.execute_sql(conn, "CREATE EXTENSION spock;")
+                    
+                    # Create dblink extension if it doesn't exist
+                    try:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'dblink');")
+                            result = cur.fetchone()
+                            if not (result and result[0]):
+                                self.pg_manager.execute_sql(conn, "CREATE EXTENSION dblink;")
+                                self.formatter.success("Created dblink extension", port=port, indent=2)
+                    except Exception:
+                        pass  # dblink might not be available, that's okay
                 except Exception as e:
                     # If extension creation fails, provide helpful error message
                     error_msg = str(e)
@@ -598,7 +682,7 @@ class SpockSetup:
                     elif "extension" in error_msg.lower() and "does not exist" in error_msg.lower():
                         raise RuntimeError(f"Spock extension not found. The Spock library may not be installed or needs to be recompiled. Error: {error_msg[:100]}")
                     else:
-                        raise RuntimeError(f"Failed to create Spock extension: {error_msg[:100]}")
+                        raise RuntimeError(f"Failed to create/update Spock extension: {error_msg[:100]}")
                 
                 # Cleanup existing subscriptions and nodes
                 cleanup_sql = f"""
@@ -839,7 +923,7 @@ class SpockSetup:
     
     def verify_replication(self, port_start: int) -> bool:
         """Verify replication is working from all nodes."""
-        self.formatter.success("Verifying Cross-wiring nodes", port=None, indent=0)
+        self.formatter.success("Verifying Cross-wiring nodes", port=None, indent=0, show_elapsed=False)
         
         # First, verify subscriptions from n1 are active before creating table
         for i in range(1, self.config.NUM_NODES):  # Check n2 and n3
@@ -1154,410 +1238,632 @@ class CleanupManager:
 # Crash Scenario
 # ============================================================================
 
-def _run_crash_scenario(pg_manager, spock_setup, config, formatter, port_start, processes, verbose):
-    """Generate data on n1, monitor lag_tracker, and crash n1 when n2 LSN > n3 LSN."""
-    formatter.success("Running crash scenario", port=None, indent=0)
+def _run_crash_scenario(pg_manager, spock_setup, config, formatter, port_start, processes, verbose, freeze_xids=False):
+    """Create perfect crash scenario: n3 ahead of n2, both nodes healthy.
+    
+    Args:
+        freeze_xids: If True, suspend all subscriptions on n2/n3 after crash to freeze XID advancement
+    """
+    crash_type = "crash2 (freeze XIDs)" if freeze_xids else "crash"
+    formatter.success(f"Running {crash_type} scenario - n3 will be ahead of n2", port=None, indent=0)
     
     port_n1 = port_start
     port_n2 = port_start + 1
     port_n3 = port_start + 2
     
     try:
-        # Create test table on n1 if it doesn't exist
-        conn_n1 = pg_manager.connect(port_n1)
-        pg_manager.execute_sql(conn_n1, """
-            CREATE TABLE IF NOT EXISTS crash_test (
-                id SERIAL PRIMARY KEY,
-                data TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-        """)
-        try:
-            pg_manager.execute_sql(conn_n1, """
-                SELECT spock.repset_add_table('default', 'crash_test');
-            """)
-        except Exception:
-            pass  # Table may already be in replication set
-        conn_n1.close()
-        formatter.success("Created test table on n1", port=port_n1, indent=1)
-        
-        # Step 1: Insert some initial data
-        formatter.success("Inserting initial data on n1", port=port_n1, indent=1)
-        conn_n1 = pg_manager.connect(port_n1)
-        for i in range(20):
-            pg_manager.execute_sql(conn_n1, 
-                f"INSERT INTO crash_test (data) VALUES ('initial_data_{i}');")
-        conn_n1.close()
-        time.sleep(3)  # Wait for replication
-        
-        # Check initial LSNs to see which node is ahead
-        conn_n2 = pg_manager.connect(port_n2)
-        lag_n2_init = pg_manager.fetch_sql(conn_n2, """
-            SELECT commit_lsn FROM spock.lag_tracker
-            WHERE origin_name = 'n1' AND receiver_name = 'n2';
-        """)
-        conn_n2.close()
-        
-        conn_n3 = pg_manager.connect(port_n3)
-        lag_n3_init = pg_manager.fetch_sql(conn_n3, """
-            SELECT commit_lsn FROM spock.lag_tracker
-            WHERE origin_name = 'n1' AND receiver_name = 'n3';
-        """)
-        conn_n3.close()
-        
-        n2_lsn_init = lag_n2_init[0][0] if lag_n2_init and lag_n2_init[0] and lag_n2_init[0][0] else None
-        n3_lsn_init = lag_n3_init[0][0] if lag_n3_init and lag_n3_init[0] and lag_n3_init[0][0] else None
-        
-        if verbose:
-            formatter.info(f"Initial LSNs: n2={n2_lsn_init}, n3={n3_lsn_init}", port=None, indent=1)
-        
-        # If n3 is ahead, we need to wait for n2 to catch up or generate more data
-        if n2_lsn_init and n3_lsn_init:
+        # Step 1: Drop and create table on all nodes directly
+        formatter.success("Creating fresh test table on all nodes", port=None, indent=1)
+        for port in [port_n1, port_n2, port_n3]:
+            conn = pg_manager.connect(port)
             try:
-                conn_n2 = pg_manager.connect(port_n2)
-                n3_ahead = pg_manager.fetch_sql(conn_n2, 
-                    f"SELECT '{n3_lsn_init}'::pg_lsn > '{n2_lsn_init}'::pg_lsn;")
-                conn_n2.close()
-                
-                if n3_ahead and n3_ahead[0] and n3_ahead[0][0]:
-                    formatter.success("n3 is ahead of n2, generating more data to let n2 catch up", port=None, indent=1)
-                    # Generate more data until n2 catches up
-                    catchup_batch_size = 10
-                    for catchup_iter in range(100):
-                        conn_n1 = pg_manager.connect(port_n1)
-                        for i in range(catchup_batch_size):
-                            pg_manager.execute_sql(conn_n1, 
-                                f"INSERT INTO crash_test (data) VALUES ('catchup_data_{catchup_iter}_row_{i}');")
-                        conn_n1.close()
-                        time.sleep(0.5)
-                        
-                        # Check if n2 caught up
-                        conn_n2 = pg_manager.connect(port_n2)
-                        lag_n2_check = pg_manager.fetch_sql(conn_n2, """
-                            SELECT commit_lsn FROM spock.lag_tracker
-                            WHERE origin_name = 'n1' AND receiver_name = 'n2';
-                        """)
-                        conn_n2.close()
-                        n2_lsn_check = lag_n2_check[0][0] if lag_n2_check and lag_n2_check[0] and lag_n2_check[0][0] else None
-                        
-                        if n2_lsn_check:
-                            conn_n2 = pg_manager.connect(port_n2)
-                            n2_ahead_now = pg_manager.fetch_sql(conn_n2, 
-                                f"SELECT '{n2_lsn_check}'::pg_lsn > '{n3_lsn_init}'::pg_lsn;")
-                            conn_n2.close()
-                            
-                            if n2_ahead_now and n2_ahead_now[0] and n2_ahead_now[0][0]:
-                                if verbose:
-                                    formatter.info(f"n2 caught up: n2 LSN={n2_lsn_check} > n3 LSN={n3_lsn_init}", port=None, indent=2)
-                                break
+                # Drop table if exists
+                pg_manager.execute_sql(conn, "DROP TABLE IF EXISTS crash_test CASCADE;")
+                # Create table
+                pg_manager.execute_sql(conn, """
+                    CREATE TABLE crash_test (
+                        id SERIAL PRIMARY KEY,
+                        data TEXT,
+                        created_at TIMESTAMP DEFAULT NOW()
+                    );
+                """)
+                # Verify table was created using information_schema
+                verify_result = pg_manager.fetch_sql(conn, """
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = 'crash_test'
+                    );
+                """)
+                if not verify_result or not verify_result[0][0]:
+                    conn.close()
+                    raise RuntimeError(f"Table crash_test was not created on port {port}")
+            except Exception as e:
+                conn.close()
+                raise RuntimeError(f"Failed to create crash_test on port {port}: {e}")
+            # Check if table is already in replication set before adding
+            try:
+                in_repset = pg_manager.fetch_sql(conn, """
+                    SELECT EXISTS (
+                        SELECT 1 FROM spock.replication_set_table rst
+                        JOIN spock.replication_set rs ON rst.set_id = rs.set_id
+                        JOIN pg_class c ON c.oid = rst.set_reloid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE rs.set_name = 'default' 
+                          AND n.nspname = 'public' 
+                          AND c.relname = 'crash_test'
+                    );
+                """)
+                if not (in_repset and in_repset[0][0]):
+                    pg_manager.execute_sql(conn, "SELECT spock.repset_add_table('default', 'crash_test');")
+            except Exception:
+                pass  # Table already in replication set or check failed, that's fine
+            conn.close()
+        
+        time.sleep(1)
+        
+        # Step 2: Verify table exists on n1 before inserting
+        conn_n1 = pg_manager.connect(port_n1)
+        try:
+            # Use information_schema to check if table exists (more reliable than SELECT)
+            table_exists = pg_manager.fetch_sql(conn_n1, """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = 'crash_test'
+                );
+            """)
+            if not table_exists or not table_exists[0][0]:
+                conn_n1.close()
+                raise RuntimeError("Table crash_test does not exist on n1 after creation")
+            # Also verify we can query it (even if empty)
+            pg_manager.fetch_sql(conn_n1, "SELECT COUNT(*) FROM crash_test;")
+        except Exception as e:
+            conn_n1.close()
+            raise RuntimeError(f"Table crash_test verification failed on n1: {e}")
+        conn_n1.close()
+        
+        # Step 3: Ensure table is in replication set on n1 and subscriptions are enabled
+        conn_n1 = pg_manager.connect(port_n1)
+        try:
+            # Check if table is already in replication set before adding
+            in_repset = pg_manager.fetch_sql(conn_n1, """
+                SELECT EXISTS (
+                    SELECT 1 FROM spock.replication_set_table rst
+                    JOIN spock.replication_set rs ON rst.set_id = rs.set_id
+                    JOIN pg_class c ON c.oid = rst.set_reloid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE rs.set_name = 'default' 
+                      AND n.nspname = 'public' 
+                      AND c.relname = 'crash_test'
+                );
+            """)
+            if not (in_repset and in_repset[0][0]):
+                pg_manager.execute_sql(conn_n1, "SELECT spock.repset_add_table('default', 'crash_test');")
+        except Exception:
+            pass  # Table already in replication set or check failed, that's fine
+        conn_n1.close()
+        
+        # Ensure subscriptions from n1 to n2 and n3 are enabled
+        for port, node_name in [(port_n2, 'n2'), (port_n3, 'n3')]:
+            conn = pg_manager.connect(port)
+            try:
+                sub_result = pg_manager.fetch_sql(conn, f"""
+                    SELECT s.sub_id, s.sub_enabled
+                    FROM spock.subscription s
+                    JOIN spock.node o ON s.sub_origin = o.node_id
+                    WHERE o.node_name = 'n1' AND s.sub_target = (SELECT node_id FROM spock.node WHERE node_name = '{node_name}');
+                """)
+                if sub_result and sub_result[0]:
+                    sub_id, sub_enabled = sub_result[0]
+                    if not sub_enabled:
+                        pg_manager.execute_sql(conn, f"UPDATE spock.subscription SET sub_enabled = true WHERE sub_id = {sub_id};")
+                        formatter.success(f"Enabled subscription from n1 to {node_name}", port=port, indent=2)
             except Exception as e:
                 if verbose:
-                    formatter.warning(f"Error checking initial LSNs: {e}", port=None, indent=1)
+                    formatter.warning(f"Could not check/enable subscription on {node_name}: {e}", port=port, indent=2)
+            conn.close()
         
-        # Step 2: Disable n3's subscription from n1 to create lag
-        formatter.success("Disabling n3 subscription from n1 to create lag", port=port_n3, indent=1)
-        conn_n3 = pg_manager.connect(port_n3)
-        sub_n3_name = None
-        try:
-            # Find subscription name from n1 to n3
-            sub_result = pg_manager.fetch_sql(conn_n3, """
-                SELECT s.sub_name
+        # Wait for apply workers to start (check subscription status)
+        formatter.success("Waiting for apply workers to start...", port=None, indent=1)
+        for attempt in range(10):
+            time.sleep(1)
+            all_ready = True
+            for port, node_name in [(port_n2, 'n2'), (port_n3, 'n3')]:
+                conn = pg_manager.connect(port)
+                try:
+                    sub_result = pg_manager.fetch_sql(conn, f"""
+                        SELECT s.sub_enabled
+                        FROM spock.subscription s
+                        JOIN spock.node o ON s.sub_origin = o.node_id
+                        WHERE o.node_name = 'n1' AND s.sub_target = (SELECT node_id FROM spock.node WHERE node_name = '{node_name}');
+                    """)
+                    if sub_result and sub_result[0]:
+                        sub_enabled = sub_result[0][0]
+                        if not sub_enabled:
+                            all_ready = False
+                except Exception:
+                    all_ready = False
+                conn.close()
+            if all_ready:
+                break
+            if verbose and attempt % 3 == 0:
+                formatter.info(f"Waiting for subscriptions to be ready... (attempt {attempt+1}/10)", port=None, indent=2)
+        
+        # Step 4: Insert initial 20 rows (both n2 and n3 receive)
+        formatter.success("Inserting 20 initial rows on n1 (both n2 and n3 receive)", port=None, indent=1)
+        conn_n1 = pg_manager.connect(port_n1)
+        for i in range(20):
+            pg_manager.execute_sql(conn_n1, f"INSERT INTO crash_test (data) VALUES ('initial_{i+1}');")
+        conn_n1.close()
+        
+        # Step 5: Wait for replication with polling
+        formatter.success("Waiting for replication to n2 and n3...", port=None, indent=1)
+        max_wait = 30  # 30 seconds max
+        wait_interval = 1  # Check every second
+        for attempt in range(max_wait):
+            time.sleep(wait_interval)
+            conn_n2 = pg_manager.connect(port_n2)
+            n2_initial = pg_manager.fetch_sql(conn_n2, "SELECT count(*) FROM crash_test;")[0][0]
+            conn_n2.close()
+            
+            conn_n3 = pg_manager.connect(port_n3)
+            n3_initial = pg_manager.fetch_sql(conn_n3, "SELECT count(*) FROM crash_test;")[0][0]
+            conn_n3.close()
+            
+            if n2_initial == 20 and n3_initial == 20:
+                formatter.success(f"Initial sync complete: n2={n2_initial} rows, n3={n3_initial} rows", port=None, indent=1)
+                break
+            
+            if verbose and attempt % 5 == 0:
+                formatter.info(f"Waiting for replication... n2={n2_initial}, n3={n3_initial} (attempt {attempt+1}/{max_wait})", port=None, indent=2)
+        else:
+            # Timeout - check what we have
+            raise RuntimeError(f"Replication timeout: n2={n2_initial} rows, n3={n3_initial} rows (expected 20 each after {max_wait}s)")
+        
+        # Step 6: Suspend subscription from n1 to n2 (but NOT from n3 to n2)
+        # This is intentional to create the crash scenario where n3 is ahead of n2
+        # We suspend n1->n2 but keep n3->n2 active so n2 can still receive from n3
+        # Only do this for --crash, not for --crash2
+        sub_n1_n2_id = None
+        if not freeze_xids:
+            conn_n2 = pg_manager.connect(port_n2)
+            sub_n2_result = pg_manager.fetch_sql(conn_n2, """
+                SELECT s.sub_id, s.sub_name, o.node_name
                 FROM spock.subscription s
                 JOIN spock.node o ON o.node_id = s.sub_origin
-                JOIN spock.node t ON t.node_id = s.sub_target
-                WHERE o.node_name = 'n1' AND t.node_name = 'n3';
+                WHERE s.sub_target = (SELECT node_id FROM spock.node WHERE node_name = 'n2');
             """)
-            if sub_result and sub_result[0]:
-                sub_n3_name = sub_result[0][0]
-                pg_manager.execute_sql(conn_n3, f"SELECT spock.sub_disable('{sub_n3_name}');")
-                formatter.success(f"Disabled subscription {sub_n3_name} on n3", port=port_n3, indent=2)
-            else:
-                formatter.warning("Could not find subscription from n1 to n3", port=port_n3, indent=2)
-        except Exception as e:
-            formatter.warning(f"Could not disable n3 subscription: {e}", port=port_n3, indent=2)
+            if not sub_n2_result:
+                raise RuntimeError("Could not find any subscriptions to n2")
+            
+            for sub_row in sub_n2_result:
+                sub_id, sub_name, origin_name = sub_row
+                # Only suspend subscription from n1 to n2, NOT from n3 to n2
+                if origin_name == 'n1':
+                    pg_manager.execute_sql(conn_n2, 
+                        f"UPDATE spock.subscription SET sub_enabled = false WHERE sub_id = {sub_id};")
+                    formatter.success(f"Suspended n2's subscription '{sub_name}' from {origin_name}", port=None, indent=1)
+                    sub_n1_n2_id = sub_id
+            
+            conn_n2.close()
+            time.sleep(5)  # Wait for apply workers to fully stop
+            
+            # Verify n2 is not receiving more data from n1 (apply workers have stopped)
+            conn_n2 = pg_manager.connect(port_n2)
+            n2_before_lag = pg_manager.fetch_sql(conn_n2, "SELECT count(*) FROM crash_test;")[0][0]
+            conn_n2.close()
+            time.sleep(3)  # Wait a bit more
+            conn_n2 = pg_manager.connect(port_n2)
+            n2_after_lag = pg_manager.fetch_sql(conn_n2, "SELECT count(*) FROM crash_test;")[0][0]
+            conn_n2.close()
+            
+            if n2_before_lag != n2_after_lag:
+                raise RuntimeError(f"n2 is still receiving data after suspension! Before={n2_before_lag}, After={n2_after_lag}")
+            
+            formatter.success(f"Verified n2 stopped receiving data from n1 ({n2_before_lag} rows stable)", port=None, indent=1)
+        
+        # Step 7: Insert 70 more rows
+        if not freeze_xids:
+            formatter.success("Inserting 70 more rows on n1 (only n3 receives, n2's subscription from n1 is suspended)", port=None, indent=1)
+        else:
+            formatter.success("Inserting 70 more rows on n1", port=None, indent=1)
+        conn_n1 = pg_manager.connect(port_n1)
+        for i in range(70):
+            pg_manager.execute_sql(conn_n1, f"INSERT INTO crash_test (data) VALUES ('lag_{i+21}');")
+        conn_n1.close()
+        time.sleep(5)  # Wait for n3 to receive all rows
+        
+        # Step 8: Verify n3 is ahead of n2
+        conn_n2 = pg_manager.connect(port_n2)
+        n2_count = pg_manager.fetch_sql(conn_n2, "SELECT count(*) FROM crash_test;")[0][0]
+        lag_n2 = pg_manager.fetch_sql(conn_n2, 
+            "SELECT commit_lsn FROM spock.lag_tracker WHERE origin_name = 'n1' AND receiver_name = 'n2';")
+        n2_lsn = lag_n2[0][0] if lag_n2 and lag_n2[0] else None
+        conn_n2.close()
+        
+        conn_n3 = pg_manager.connect(port_n3)
+        n3_count = pg_manager.fetch_sql(conn_n3, "SELECT count(*) FROM crash_test;")[0][0]
+        lag_n3 = pg_manager.fetch_sql(conn_n3, 
+            "SELECT commit_lsn FROM spock.lag_tracker WHERE origin_name = 'n1' AND receiver_name = 'n3';")
+        n3_lsn = lag_n3[0][0] if lag_n3 and lag_n3[0] else None
         conn_n3.close()
         
-        # Wait a moment for the disable to take effect
-        time.sleep(2)
+        if n3_count <= n2_count:
+            raise RuntimeError(f"n3 is not ahead! n2={n2_count}, n3={n3_count}")
         
-        # Step 3: Generate data (n2 receives it, n3 doesn't)
-        formatter.success("Generating data on n1 (n2 receives, n3 doesn't)", port=None, indent=1)
-        
-        batch_size = 10
-        max_iterations = 500
-        n1_process = processes[0] if processes and len(processes) > 0 else None
-        n2_lsn_saved = None
-        n3_lsn_saved = None
-        
-        # First monitoring phase: until n2 LSN > n3 LSN
-        for iteration in range(max_iterations):
-            # Insert data on n1
-            conn_n1 = pg_manager.connect(port_n1)
-            for i in range(batch_size):
-                pg_manager.execute_sql(conn_n1, 
-                    f"INSERT INTO crash_test (data) VALUES ('batch_{iteration}_row_{i}');")
-            conn_n1.close()
-            
-            # Check lag_tracker on n2 and n3
-            conn_n2 = pg_manager.connect(port_n2)
-            lag_n2 = pg_manager.fetch_sql(conn_n2, """
-                SELECT commit_lsn FROM spock.lag_tracker
-                WHERE origin_name = 'n1' AND receiver_name = 'n2';
-            """)
-            conn_n2.close()
-            
-            conn_n3 = pg_manager.connect(port_n3)
-            lag_n3 = pg_manager.fetch_sql(conn_n3, """
-                SELECT commit_lsn FROM spock.lag_tracker
-                WHERE origin_name = 'n1' AND receiver_name = 'n3';
-            """)
-            conn_n3.close()
-            
-            n2_lsn = lag_n2[0][0] if lag_n2 and lag_n2[0] and lag_n2[0][0] else None
-            n3_lsn = lag_n3[0][0] if lag_n3 and lag_n3[0] and lag_n3[0][0] else None
-            
-            if verbose and iteration % 10 == 0:
-                formatter.info(f"Iteration {iteration}: n2 LSN={n2_lsn}, n3 LSN={n3_lsn}", 
-                             port=None, indent=2)
-            
-            # Check if n2 LSN > n3 LSN (both must be valid)
-            if n2_lsn and n3_lsn:
-                # Compare LSNs - use PostgreSQL's LSN comparison
-                try:
-                    conn_n2 = pg_manager.connect(port_n2)
-                    comparison = pg_manager.fetch_sql(conn_n2, 
-                        f"SELECT '{n2_lsn}'::pg_lsn > '{n3_lsn}'::pg_lsn;")
-                    conn_n2.close()
-                    
-                    if comparison and comparison[0] and comparison[0][0]:
-                        formatter.success(
-                            f"n2 LSN ({n2_lsn}) > n3 LSN ({n3_lsn}) - first lag achieved",
-                            port=None, indent=1
-                        )
-                        # Save the LSN values for later comparison
-                        n2_lsn_saved = n2_lsn
-                        n3_lsn_saved = n3_lsn
-                        break
-                except Exception as e:
-                    if verbose:
-                        formatter.warning(f"Error comparing LSNs: {e}", port=None, indent=2)
-            
-            time.sleep(0.1)  # Small delay between batches
-        
-        # Step 4: Enable/disable subscriptions to create more lag
-        formatter.success("Enabling n3, then disabling n2 to create more lag", port=None, indent=1)
-        
-        # Enable n3 subscription
-        if sub_n3_name:
-            conn_n3 = pg_manager.connect(port_n3)
-            try:
-                pg_manager.execute_sql(conn_n3, f"SELECT spock.sub_enable('{sub_n3_name}');")
-                formatter.success(f"Enabled subscription {sub_n3_name} on n3", port=port_n3, indent=2)
-            except Exception as e:
-                formatter.warning(f"Could not enable n3 subscription: {e}", port=port_n3, indent=2)
-            conn_n3.close()
-            time.sleep(2)
-        
-        # Disable n2 subscription
-        conn_n2 = pg_manager.connect(port_n2)
-        sub_n2_name = None
-        try:
-            sub_result = pg_manager.fetch_sql(conn_n2, """
-                SELECT s.sub_name
-                FROM spock.subscription s
-                JOIN spock.node o ON o.node_id = s.sub_origin
-                JOIN spock.node t ON t.node_id = s.sub_target
-                WHERE o.node_name = 'n1' AND t.node_name = 'n2';
-            """)
-            if sub_result and sub_result[0]:
-                sub_n2_name = sub_result[0][0]
-                pg_manager.execute_sql(conn_n2, f"SELECT spock.sub_disable('{sub_n2_name}');")
-                formatter.success(f"Disabled subscription {sub_n2_name} on n2", port=port_n2, indent=2)
-            else:
-                formatter.warning("Could not find subscription from n1 to n2", port=port_n2, indent=2)
-        except Exception as e:
-            formatter.warning(f"Could not disable n2 subscription: {e}", port=port_n2, indent=2)
-        conn_n2.close()
-        time.sleep(2)
-        
-        # Step 5: Generate more data and monitor - check current LSNs
-        # Note: n2 is disabled so its LSN won't advance, n3 is enabled so it will catch up
-        # We want to crash when n2 was ahead (saved LSN) or immediately when we detect n2 > n3
-        formatter.success("Generating more data and monitoring - n2 was ahead, will crash when confirmed", port=None, indent=1)
-        
-        # Use saved n2 LSN from phase 1 (when n2 was ahead)
-        if not n2_lsn_saved:
-            formatter.warning("n2_lsn_saved not set, using current n2 LSN", port=None, indent=1)
-            conn_n2 = pg_manager.connect(port_n2)
-            lag_n2 = pg_manager.fetch_sql(conn_n2, """
-                SELECT commit_lsn FROM spock.lag_tracker
-                WHERE origin_name = 'n1' AND receiver_name = 'n2';
-            """)
-            conn_n2.close()
-            n2_lsn_saved = lag_n2[0][0] if lag_n2 and lag_n2[0] and lag_n2[0][0] else None
-        
-        # Generate a few batches and check - crash immediately since n2 was ahead
-        for iteration in range(20):
-            # Insert data on n1
-            conn_n1 = pg_manager.connect(port_n1)
-            for i in range(batch_size):
-                pg_manager.execute_sql(conn_n1, 
-                    f"INSERT INTO crash_test (data) VALUES ('phase2_batch_{iteration}_row_{i}');")
-            conn_n1.close()
-            time.sleep(0.2)
-            
-            # Check current n3 LSN
-            conn_n3 = pg_manager.connect(port_n3)
-            lag_n3 = pg_manager.fetch_sql(conn_n3, """
-                SELECT commit_lsn FROM spock.lag_tracker
-                WHERE origin_name = 'n1' AND receiver_name = 'n3';
-            """)
-            conn_n3.close()
-            
-            n3_lsn = lag_n3[0][0] if lag_n3 and lag_n3[0] and lag_n3[0][0] else None
-            
-            if verbose and iteration % 5 == 0:
-                formatter.info(f"Phase 2 Iteration {iteration}: n2 LSN (saved)={n2_lsn_saved}, n3 LSN={n3_lsn}", 
-                             port=None, indent=2)
-            
-            # Check if saved n2 LSN > current n3 LSN (n2 was ahead)
-            if n2_lsn_saved and n3_lsn:
-                # Compare LSNs - use PostgreSQL's LSN comparison
-                try:
-                    conn_n2 = pg_manager.connect(port_n2)
-                    comparison = pg_manager.fetch_sql(conn_n2, 
-                        f"SELECT '{n2_lsn_saved}'::pg_lsn > '{n3_lsn}'::pg_lsn;")
-                    conn_n2.close()
-                    
-                    if comparison and comparison[0] and comparison[0][0]:
-                        # Verify subscriptions are enabled before crashing
-                        try:
-                            conn_n2_check = pg_manager.connect(port_n2)
-                            sub_status = pg_manager.fetch_sql(conn_n2_check, 
-                                "SELECT sub_name, sub_enabled FROM spock.subscription WHERE sub_name LIKE '%n1%' ORDER BY sub_name;")
-                            conn_n2_check.close()
-                            
-                            if sub_status:
-                                for sub_row in sub_status:
-                                    sub_name, sub_enabled = sub_row
-                                    if not sub_enabled:
-                                        formatter.warning(
-                                            f"Subscription {sub_name} is disabled - enabling before crash",
-                                            port=port_n2, indent=1
-                                        )
-                                        conn_n2_enable = pg_manager.connect(port_n2)
-                                        pg_manager.execute_sql(conn_n2_enable, 
-                                            f"UPDATE spock.subscription SET sub_enabled = true WHERE sub_name = '{sub_name}';")
-                                        conn_n2_enable.close()
-                        except Exception as e:
-                            if verbose:
-                                formatter.warning(f"Could not check/enable subscriptions: {e}", port=port_n2, indent=1)
-                        
-                        formatter.success(
-                            f"n2 LSN ({n2_lsn_saved}) > n3 LSN ({n3_lsn}) - crashing n1",
-                            port=None, indent=1
-                        )
-                        # Step 6: Crash n1
-                        if n1_process:
-                            n1_process.terminate()
-                            time.sleep(1)
-                            if n1_process.poll() is None:
-                                n1_process.kill()
-                        else:
-                            # Try to find and kill by port
-                            import signal
-                            try:
-                                result = subprocess.run(
-                                    ['lsof', '-ti', f':{port_n1}'],
-                                    capture_output=True, text=True
-                                )
-                                if result.returncode == 0 and result.stdout.strip():
-                                    pid = int(result.stdout.strip().split('\n')[0])
-                                    os.kill(pid, signal.SIGTERM)
-                                    time.sleep(1)
-                                    try:
-                                        os.kill(pid, signal.SIGKILL)
-                                    except ProcessLookupError:
-                                        pass
-                            except Exception as e:
-                                formatter.warning(f"Could not kill n1 process: {e}", port=port_n1, indent=1)
-                        
-                        formatter.success(
-                            "n1 crashed. n2 has transactions that n3 missed. "
-                            "Run recovery.sql manually to fix.",
-                            port=None, indent=1
-                        )
-                        return
-                    else:
-                        # n3 caught up or passed n2, but n2 was ahead before, so crash anyway
-                        if iteration >= 5:  # Give n3 a few iterations to process
-                            # Verify subscriptions are enabled before crashing
-                            try:
-                                conn_n2_check = pg_manager.connect(port_n2)
-                                sub_status = pg_manager.fetch_sql(conn_n2_check, 
-                                    "SELECT sub_name, sub_enabled FROM spock.subscription WHERE sub_name LIKE '%n1%' ORDER BY sub_name;")
-                                conn_n2_check.close()
-                                
-                                if sub_status:
-                                    for sub_row in sub_status:
-                                        sub_name, sub_enabled = sub_row
-                                        if not sub_enabled:
-                                            formatter.warning(
-                                                f"Subscription {sub_name} is disabled - enabling before crash",
-                                                port=port_n2, indent=1
-                                            )
-                                            conn_n2_enable = pg_manager.connect(port_n2)
-                                            pg_manager.execute_sql(conn_n2_enable, 
-                                                f"UPDATE spock.subscription SET sub_enabled = true WHERE sub_name = '{sub_name}';")
-                                            conn_n2_enable.close()
-                            except Exception as e:
-                                if verbose:
-                                    formatter.warning(f"Could not check/enable subscriptions: {e}", port=port_n2, indent=1)
-                            
-                            formatter.success(
-                                f"n2 was ahead (LSN {n2_lsn_saved}), n3 current LSN ({n3_lsn}) - crashing n1",
-                                port=None, indent=1
-                            )
-                            # Step 6: Crash n1
-                            if n1_process:
-                                n1_process.terminate()
-                                time.sleep(1)
-                                if n1_process.poll() is None:
-                                    n1_process.kill()
-                            else:
-                                # Try to find and kill by port
-                                import signal
-                                try:
-                                    result = subprocess.run(
-                                        ['lsof', '-ti', f':{port_n1}'],
-                                        capture_output=True, text=True
-                                    )
-                                    if result.returncode == 0 and result.stdout.strip():
-                                        pid = int(result.stdout.strip().split('\n')[0])
-                                        os.kill(pid, signal.SIGTERM)
-                                        time.sleep(1)
-                                        try:
-                                            os.kill(pid, signal.SIGKILL)
-                                        except ProcessLookupError:
-                                            pass
-                                except Exception as e:
-                                    formatter.warning(f"Could not kill n1 process: {e}", port=port_n1, indent=1)
-                            
-                            formatter.success(
-                                "n1 crashed. n2 has transactions that n3 missed. "
-                                "Run recovery.sql manually to fix.",
-                                port=None, indent=1
-                            )
-                            return
-                except Exception as e:
-                    if verbose:
-                        formatter.warning(f"Error comparing LSNs: {e}", port=None, indent=2)
-        
-        formatter.warning(
-            "Max iterations reached. n2 LSN never exceeded n3 LSN. "
-            "n3 may be caught up or replication may be too fast.",
+        formatter.success(
+            f"Pre-crash state: n2={n2_count} rows (LSN={n2_lsn}), n3={n3_count} rows (LSN={n3_lsn})",
             port=None, indent=1
         )
+        
+        # Step 9: Verify n2 and n3 are healthy (can connect, queries work)
+        conn_n2 = pg_manager.connect(port_n2)
+        n2_health = pg_manager.fetch_sql(conn_n2, "SELECT 1;")[0][0]
+        conn_n2.close()
+        
+        conn_n3 = pg_manager.connect(port_n3)
+        n3_health = pg_manager.fetch_sql(conn_n3, "SELECT 1;")[0][0]
+        conn_n3.close()
+        
+        if n2_health != 1 or n3_health != 1:
+            raise RuntimeError("n2 or n3 is not healthy!")
+        
+        formatter.success("n2 and n3 are healthy and ready", port=None, indent=1)
+        
+        # Step 11: Crash n1
+        formatter.success("Crashing n1...", port=None, indent=1)
+        n1_process = processes[0] if processes and len(processes) > 0 else None
+        if n1_process:
+            n1_process.terminate()
+            time.sleep(1)
+            if n1_process.poll() is None:
+                n1_process.kill()
+        else:
+            import signal
+            try:
+                result = subprocess.run(['lsof', '-ti', f':{port_n1}'], capture_output=True, text=True)
+                if result.returncode == 0 and result.stdout.strip():
+                    pid = int(result.stdout.strip().split('\n')[0])
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(1)
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            except Exception as e:
+                formatter.warning(f"Could not kill n1: {e}", port=None, indent=1)
+        
+        time.sleep(2)  # Brief wait after crash
+        
+        # Step 11.5: Freeze XID advancement on n2 and n3 (crash2 mode only)
+        if freeze_xids:
+            formatter.success("Freezing XID advancement by suspending all subscriptions", port=None, indent=1)
+            
+            # Suspend all subscriptions on n2 (except sub_n2_n3 which must remain active)
+            try:
+                conn_n2_freeze = pg_manager.connect(port_n2)
+                conn_n2_freeze.autocommit = True  # Required for immediate := true
+                pg_manager.execute_sql(conn_n2_freeze, """
+                    SELECT spock.sub_disable(sub_name, immediate := true)
+                    FROM spock.subscription 
+                    WHERE sub_enabled = true AND sub_name != 'sub_n2_n3';
+                """)
+                conn_n2_freeze.close()
+                formatter.success("Suspended all subscriptions on n2 to freeze XIDs (sub_n2_n3 kept active)", port=None, indent=2)
+            except Exception as e:
+                formatter.warning(f"Could not suspend subscriptions on n2: {e}", port=None, indent=2)
+            
+            # Suspend all subscriptions on n3 (except sub_n2_n3 which must remain active)
+            try:
+                conn_n3_freeze = pg_manager.connect(port_n3)
+                conn_n3_freeze.autocommit = True  # Required for immediate := true
+                pg_manager.execute_sql(conn_n3_freeze, """
+                    SELECT spock.sub_disable(sub_name, immediate := true)
+                    FROM spock.subscription 
+                    WHERE sub_enabled = true AND sub_name != 'sub_n2_n3';
+                """)
+                conn_n3_freeze.close()
+                formatter.success("Suspended all subscriptions on n3 to freeze XIDs (sub_n2_n3 kept active)", port=None, indent=2)
+            except Exception as e:
+                formatter.warning(f"Could not suspend subscriptions on n3: {e}", port=None, indent=2)
+            
+            time.sleep(5)  # Wait for apply workers to fully stop
+            formatter.success("XID advancement frozen - cluster ready for recovery", port=None, indent=1)
+        
+        # Step 12: Final state verification and reporting (leave subscriptions as-is for recovery testing)
+        formatter.success("Final state verification", port=None, indent=1)
+        
+        # Get n2 state
+        conn_n2 = pg_manager.connect(port_n2)
+        n2_final = pg_manager.fetch_sql(conn_n2, "SELECT count(*) FROM crash_test;")[0][0]
+        n2_lag = pg_manager.fetch_sql(conn_n2, 
+            "SELECT commit_lsn FROM spock.lag_tracker WHERE origin_name = 'n1' AND receiver_name = 'n2';")
+        n2_lsn_final = n2_lag[0][0] if n2_lag and n2_lag[0] else None
+        n2_subs = pg_manager.fetch_sql(conn_n2, """
+            SELECT s.sub_name, o.node_name as origin, s.sub_enabled
+            FROM spock.subscription s
+            JOIN spock.node o ON s.sub_origin = o.node_id
+            ORDER BY o.node_name;
+        """)
+        conn_n2.close()
+        
+        # Get n3 state
+        conn_n3 = pg_manager.connect(port_n3)
+        n3_final = pg_manager.fetch_sql(conn_n3, "SELECT count(*) FROM crash_test;")[0][0]
+        n3_lag = pg_manager.fetch_sql(conn_n3, 
+            "SELECT commit_lsn FROM spock.lag_tracker WHERE origin_name = 'n1' AND receiver_name = 'n3';")
+        n3_lsn_final = n3_lag[0][0] if n3_lag and n3_lag[0] else None
+        n3_subs = pg_manager.fetch_sql(conn_n3, """
+            SELECT s.sub_name, o.node_name as origin, s.sub_enabled
+            FROM spock.subscription s
+            JOIN spock.node o ON s.sub_origin = o.node_id
+            ORDER BY o.node_name;
+        """)
+        conn_n3.close()
+        
+        # Print detailed final state
+        print()  # Empty line
+        formatter.success("CRASH SCENARIO COMPLETE - FINAL STATE", port=None, indent=0)
+        print()  # Empty line
+        
+        formatter.success("NODE n2 (TARGET for recovery):", port=None, indent=0)
+        formatter.success(f"  Row count: {n2_final} rows", port=None, indent=1)
+        formatter.success(f"  LSN (n1->n2): {n2_lsn_final}", port=None, indent=1)
+        formatter.success(f"  Subscriptions:", port=None, indent=1)
+        for sub_row in n2_subs:
+            sub_name, origin, enabled = sub_row
+            status = "ENABLED" if enabled else "DISABLED"
+            formatter.success(f"    {sub_name} (from {origin}): {status}", port=None, indent=2)
+        
+        print()  # Empty line
+        formatter.success("NODE n3 (SOURCE for recovery):", port=None, indent=0)
+        formatter.success(f"  Row count: {n3_final} rows", port=None, indent=1)
+        formatter.success(f"  LSN (n1->n3): {n3_lsn_final}", port=None, indent=1)
+        formatter.success(f"  Subscriptions:", port=None, indent=1)
+        for sub_row in n3_subs:
+            sub_name, origin, enabled = sub_row
+            status = "ENABLED" if enabled else "DISABLED"
+            formatter.success(f"    {sub_name} (from {origin}): {status}", port=None, indent=2)
+        
+        print()  # Empty line
+        formatter.success("RECOVERY SCENARIO:", port=None, indent=0)
+        formatter.success(f"  n3 has {n3_final} rows (ahead) - SOURCE for recovery", port=None, indent=1)
+        formatter.success(f"  n2 has {n2_final} rows (behind) - TARGET for recovery", port=None, indent=1)
+        formatter.success(f"  Missing {n3_final - n2_final} rows on n2", port=None, indent=1)
+        
+        # Verify and test n2-n3 and n3-n2 subscriptions
+        formatter.success("Verifying n2-n3 and n3-n2 subscriptions:", port=None, indent=1)
+        
+        # Check n2->n3 subscription (on n3)
+        sub_n2_n3_enabled = False
+        sub_n2_n3_replicating = False
+        try:
+            conn_n3 = pg_manager.connect(port_n3)
+            sub_n2_n3_result = pg_manager.fetch_sql(conn_n3, """
+                SELECT s.sub_name, s.sub_enabled
+                FROM spock.subscription s
+                JOIN spock.node o ON s.sub_origin = o.node_id
+                WHERE o.node_name = 'n2' AND s.sub_target = (SELECT node_id FROM spock.node WHERE node_name = 'n3');
+            """)
+            if sub_n2_n3_result and sub_n2_n3_result[0]:
+                sub_name, sub_enabled = sub_n2_n3_result[0]
+                sub_n2_n3_enabled = sub_enabled
+                if sub_enabled:
+                    # Check status
+                    status_result = pg_manager.fetch_sql(conn_n3, f"SELECT status FROM spock.sub_show_status('{sub_name}');")
+                    if status_result and status_result[0]:
+                        sub_n2_n3_replicating = (status_result[0][0] == 'replicating')
+                        formatter.success(f"    n2->n3 ({sub_name}): enabled={sub_enabled}, status={status_result[0][0]}", port=None, indent=2)
+                    else:
+                        formatter.success(f"    n2->n3 ({sub_name}): enabled={sub_enabled}, status=unknown", port=None, indent=2)
+                else:
+                    formatter.warning(f"    n2->n3 ({sub_name}): DISABLED", port=None, indent=2)
+            else:
+                formatter.warning(f"    n2->n3 subscription: NOT FOUND", port=None, indent=2)
+            conn_n3.close()
+        except Exception as e:
+            formatter.warning(f"    n2->n3 check failed: {e}", port=None, indent=2)
+        
+        # Check n3->n2 subscription (on n2)
+        sub_n3_n2_enabled = False
+        sub_n3_n2_replicating = False
+        try:
+            conn_n2 = pg_manager.connect(port_n2)
+            sub_n3_n2_result = pg_manager.fetch_sql(conn_n2, """
+                SELECT s.sub_name, s.sub_enabled
+                FROM spock.subscription s
+                JOIN spock.node o ON s.sub_origin = o.node_id
+                WHERE o.node_name = 'n3' AND s.sub_target = (SELECT node_id FROM spock.node WHERE node_name = 'n2');
+            """)
+            if sub_n3_n2_result and sub_n3_n2_result[0]:
+                sub_name, sub_enabled = sub_n3_n2_result[0]
+                sub_n3_n2_enabled = sub_enabled
+                if sub_enabled:
+                    # Check status
+                    status_result = pg_manager.fetch_sql(conn_n2, f"SELECT status FROM spock.sub_show_status('{sub_name}');")
+                    if status_result and status_result[0]:
+                        sub_n3_n2_replicating = (status_result[0][0] == 'replicating')
+                        formatter.success(f"    n3->n2 ({sub_name}): enabled={sub_enabled}, status={status_result[0][0]}", port=None, indent=2)
+                    else:
+                        formatter.success(f"    n3->n2 ({sub_name}): enabled={sub_enabled}, status=unknown", port=None, indent=2)
+                else:
+                    formatter.warning(f"    n3->n2 ({sub_name}): DISABLED", port=None, indent=2)
+            else:
+                formatter.warning(f"    n3->n2 subscription: NOT FOUND", port=None, indent=2)
+            conn_n2.close()
+        except Exception as e:
+            formatter.warning(f"    n3->n2 check failed: {e}", port=None, indent=2)
+        
+        # Test bidirectional replication if both are enabled
+        if sub_n2_n3_enabled and sub_n3_n2_enabled:
+            formatter.success("Testing bidirectional replication:", port=None, indent=1)
+            test_passed = False
+            try:
+                # Clean up any existing test rows from previous runs
+                import time as time_module
+                test_timestamp = int(time_module.time() * 1000)  # Use milliseconds for uniqueness
+                test_value_n2_n3 = f'test_n2_to_n3_before_recovery_{test_timestamp}'
+                test_value_n3_n2 = f'test_n3_to_n2_before_recovery_{test_timestamp}'
+                
+                # Clean up old test rows
+                conn_n2 = pg_manager.connect(port_n2)
+                try:
+                    pg_manager.execute_sql(conn_n2, "DELETE FROM crash_test WHERE data LIKE 'test_%_before_recovery%';")
+                except Exception:
+                    pass  # Ignore errors during cleanup
+                conn_n2.close()
+                
+                conn_n3 = pg_manager.connect(port_n3)
+                try:
+                    pg_manager.execute_sql(conn_n3, "DELETE FROM crash_test WHERE data LIKE 'test_%_before_recovery%';")
+                except Exception:
+                    pass  # Ignore errors during cleanup
+                conn_n3.close()
+                
+                # Insert on n2 and verify on n3
+                conn_n2 = pg_manager.connect(port_n2)
+                try:
+                    pg_manager.execute_sql(conn_n2, f"INSERT INTO crash_test (data) VALUES ('{test_value_n2_n3}');")
+                except Exception as e:
+                    conn_n2.close()
+                    # Extract actual error from RuntimeError wrapper
+                    if isinstance(e, RuntimeError) and "| ERROR:" in str(e):
+                        actual_error = str(e).split("| ERROR:")[-1].strip()
+                    else:
+                        actual_error = str(e)
+                    formatter.warning(f"    Bidirectional replication test failed: INSERT on n2 failed - {actual_error}", port=None, indent=2)
+                    raise
+                conn_n2.close()
+                time.sleep(3)  # Increased wait time for replication
+                conn_n3 = pg_manager.connect(port_n3)
+                n3_test = pg_manager.fetch_sql(conn_n3, f"SELECT COUNT(*) FROM crash_test WHERE data = '{test_value_n2_n3}';")
+                if n3_test and n3_test[0][0] > 0:
+                    # Insert on n3 and verify on n2
+                    try:
+                        pg_manager.execute_sql(conn_n3, f"INSERT INTO crash_test (data) VALUES ('{test_value_n3_n2}');")
+                    except Exception as e:
+                        conn_n3.close()
+                        # Extract actual error from RuntimeError wrapper
+                        if isinstance(e, RuntimeError) and "| ERROR:" in str(e):
+                            actual_error = str(e).split("| ERROR:")[-1].strip()
+                        else:
+                            actual_error = str(e)
+                        formatter.warning(f"    Bidirectional replication test failed: INSERT on n3 failed - {actual_error}", port=None, indent=2)
+                        raise
+                    conn_n3.close()
+                    time.sleep(3)  # Increased wait time for replication
+                    conn_n2 = pg_manager.connect(port_n2)
+                    n2_test = pg_manager.fetch_sql(conn_n2, f"SELECT COUNT(*) FROM crash_test WHERE data = '{test_value_n3_n2}';")
+                    if n2_test and n2_test[0][0] > 0:
+                        test_passed = True
+                        formatter.success(f"    Bidirectional replication test: PASSED", port=None, indent=2)
+                    else:
+                        formatter.warning(f"    Bidirectional replication test: FAILED (n3->n2) - row not found on n2", port=None, indent=2)
+                    conn_n2.close()
+                else:
+                    formatter.warning(f"    Bidirectional replication test: FAILED (n2->n3) - row not found on n3", port=None, indent=2)
+                    conn_n3.close()
+            except Exception as e:
+                # Only show generic error if we haven't already shown a specific one
+                if "INSERT on" not in str(e) and "row not found" not in str(e):
+                    error_msg = str(e)
+                    # Extract actual error from RuntimeError wrapper if present
+                    if isinstance(e, RuntimeError) and "| ERROR:" in error_msg:
+                        error_msg = error_msg.split("| ERROR:")[-1].strip()
+                    if len(error_msg) > 150:
+                        error_msg = error_msg[:147] + "..."
+                    formatter.warning(f"    Bidirectional replication test failed: {error_msg}", port=None, indent=2)
+        else:
+            formatter.warning(f"    Skipping replication test (subscriptions not both enabled)", port=None, indent=1)
+        
+        formatter.success(f"  Both n2 and n3 are healthy and ready", port=None, indent=1)
+        if freeze_xids:
+            formatter.success(f"  XIDs FROZEN - All subscriptions suspended to prevent catalog_xmin advancement", port=None, indent=1)
+        
+        # Add replication status table
+        print()  # Empty line
+        formatter.success("REPLICATION STATUS", port=None, indent=0)
+        
+        # Collect replication data for table
+        all_data = []
+        for port, node_name in [(port_n2, 'n2'), (port_n3, 'n3')]:
+            try:
+                conn = pg_manager.connect(port)
+                
+                # Get current WAL LSN for this node
+                result = pg_manager.fetch_sql(conn, "SELECT pg_current_wal_lsn();")
+                current_lsn = result[0][0] if result and result[0] else None
+                
+                # Get replication lag information from spock.lag_tracker
+                lag_result = pg_manager.fetch_sql(conn, f"""
+                    SELECT origin_name, receiver_name, commit_lsn, remote_insert_lsn, 
+                           replication_lag_bytes, replication_lag
+                    FROM spock.lag_tracker
+                    WHERE receiver_name = '{node_name}'
+                    ORDER BY origin_name;
+                """)
+                
+                conn.close()
+                
+                if current_lsn:
+                    if lag_result:
+                        for row in lag_result:
+                            origin_name, receiver_name, commit_lsn, remote_insert_lsn, lag_bytes, lag_time = row
+                            # Format lag bytes
+                            if lag_bytes is not None:
+                                lag_bytes_str = f"{lag_bytes:,}" if lag_bytes > 0 else "0"
+                            else:
+                                lag_bytes_str = "N/A"
+                            
+                            # Format lag time
+                            if lag_time is not None:
+                                lag_time_str = str(lag_time)
+                            else:
+                                lag_time_str = "N/A"
+                            
+                            all_data.append({
+                                'node': node_name,
+                                'wal_lsn': current_lsn,
+                                'from': origin_name,
+                                'commit_lsn': commit_lsn,
+                                'lag_bytes': lag_bytes_str,
+                                'lag_time': lag_time_str
+                            })
+            except Exception as e:
+                formatter.error(f"Getting replication status: {e}", port=port, indent=1)
+        
+        # Print table format
+        if all_data:
+            print()  # Empty line
+            # Table header
+            print(f"{'Node':<6} {'WAL LSN':<15} {'From':<6} {'Commit LSN':<15} {'Lag (bytes)':<12} {'Lag (time)':<20}")
+            print("-" * 85)
+            
+            # Group by node
+            current_node = None
+            for row in all_data:
+                if current_node != row['node']:
+                    # Print node row with WAL LSN
+                    print(f"{row['node']:<6} {row['wal_lsn']:<15} {'':<6} {'':<15} {'':<12} {'':<20}")
+                    current_node = row['node']
+                # Print replication row
+                print(f"{'':<6} {'':<15} {row['from']:<6} {row['commit_lsn']:<15} {row['lag_bytes']:<12} {row['lag_time']:<20}")
+            
+            print("-" * 85)
+            print()  # Empty line
+        
+        # Print RECOVERY COMMAND at the very end (no timestamp, no elapsed time)
+        print("RECOVERY COMMAND:")
+        print("  CALL spock.recovery(")
+        print("    failed_node_name := 'n1',")
+        print("    source_node_name := 'n3',")
+        print(f"    source_dsn := 'host=localhost port={port_n3} dbname=pgedge user=pgedge',")
+        print("    target_node_name := 'n2',")
+        print(f"    target_dsn := 'host=localhost port={port_n2} dbname=pgedge user=pgedge',")
+        print("    verb := true")
+        print("  );")
+        print()  # Empty line
+        
+        return
         
     except Exception as e:
         formatter.error(f"Crash scenario failed: {e}", port=None, indent=1)
@@ -1591,7 +1897,9 @@ def main():
     parser.add_argument('--no-color', action='store_true',
                        help='Disable colored output')
     parser.add_argument('--crash', action='store_true',
-                       help='Generate data on n1, monitor lag_tracker, and crash n1 when n2 LSN > n3 LSN')
+                       help='Generate data on n1, monitor lag_tracker, and crash n1 when n3 LSN > n2 LSN (n3 is ahead for recovery testing)')
+    parser.add_argument('--crash2', action='store_true',
+                       help='Like --crash but also suspends all subscriptions on n2 and n3 to freeze XID advancement for recovery testing')
     
     args = parser.parse_args()
     
@@ -1647,10 +1955,11 @@ def main():
         # Print initial banner
         formatter.print_banner(os_info, pg_version, str(pg_bin), spock_version)
         
-        # Handle --crash option: generate data and crash n1 when n2 LSN > n3 LSN
+        # Handle --crash or --crash2 option: generate data and crash n1 when n3 LSN > n2 LSN
         # This skips all initialization and assumes cluster is already running
-        if args.crash:
-            formatter.success("Crash scenario mode - assuming cluster is already running", port=None, indent=0)
+        if args.crash or args.crash2:
+            crash_mode = "crash2" if args.crash2 else "crash"
+            formatter.success(f"{crash_mode} scenario mode - assuming cluster is already running", port=None, indent=0)
             # Verify nodes are running
             for i in range(config.NUM_NODES):
                 port = args.port_start + i
@@ -1659,11 +1968,11 @@ def main():
                     test_conn.close()
                 except Exception as e:
                     formatter.error(f"Node on port {port} is not running: {e}", port=port, indent=1)
-                    raise RuntimeError(f"Cluster must be running for --crash option. Node on port {port} is not accessible.")
+                    raise RuntimeError(f"Cluster must be running for --{crash_mode} option. Node on port {port} is not accessible.")
             
             # Get process list (empty for crash mode since we don't manage them)
             processes = []
-            _run_crash_scenario(pg_manager, spock_setup, config, formatter, args.port_start, processes, args.verbose)
+            _run_crash_scenario(pg_manager, spock_setup, config, formatter, args.port_start, processes, args.verbose, freeze_xids=args.crash2)
             return
         
         # Step 0: Clean up any existing PostgreSQL processes on our ports
@@ -1922,6 +2231,9 @@ def main():
         
         # Step 6: Display replication status and lag from all nodes
         formatter.success("Getting replication status and lag from all nodes", port=None, indent=0)
+        
+        # Collect all data first
+        all_data = []
         for i in range(config.NUM_NODES):
             port = args.port_start + i
             node_name = f"n{i+1}"
@@ -1944,39 +2256,51 @@ def main():
                 conn.close()
                 
                 if current_lsn:
-                    formatter.success(f"Node {node_name} WAL LSN: {current_lsn}", port=port, indent=1)
-                    
                     if lag_result:
                         for row in lag_result:
                             origin_name, receiver_name, commit_lsn, remote_insert_lsn, lag_bytes, lag_time = row
-                            # Format lag bytes and time
+                            # Format lag bytes
                             if lag_bytes is not None:
-                                lag_bytes_str = f"{lag_bytes:,} bytes" if lag_bytes > 0 else "0 bytes"
+                                lag_bytes_str = f"{lag_bytes:,}" if lag_bytes > 0 else "0"
                             else:
                                 lag_bytes_str = "N/A"
                             
+                            # Format lag time
                             if lag_time is not None:
-                                # Convert interval to readable string
                                 lag_time_str = str(lag_time)
                             else:
                                 lag_time_str = "N/A"
                             
-                            # Show replication status: caught up if lag is minimal
-                            if lag_bytes is not None and lag_bytes < 1024:  # Less than 1KB is essentially caught up
-                                status_icon = "✓"
-                            else:
-                                status_icon = "⚠"
-                            
-                            formatter.info(
-                                f"  {status_icon} From {origin_name}: commit_lsn={commit_lsn}, lag={lag_bytes_str} ({lag_time_str})",
-                                port=port, indent=2
-                            )
-                    else:
-                        formatter.warning(f"No replication lag data found", port=port, indent=2)
-                else:
-                    formatter.warning(f"Could not get WAL LSN", port=port, indent=1)
+                            all_data.append({
+                                'node': node_name,
+                                'wal_lsn': current_lsn,
+                                'from': origin_name,
+                                'commit_lsn': commit_lsn,
+                                'lag_bytes': lag_bytes_str,
+                                'lag_time': lag_time_str
+                            })
             except Exception as e:
                 formatter.error(f"Getting replication status: {e}", port=port, indent=1)
+        
+        # Print table format
+        if all_data:
+            print()  # Empty line
+            # Table header
+            print(f"{'Node':<6} {'WAL LSN':<15} {'From':<6} {'Commit LSN':<15} {'Lag (bytes)':<12} {'Lag (time)':<20}")
+            print("-" * 85)
+            
+            # Group by node
+            current_node = None
+            for row in all_data:
+                if current_node != row['node']:
+                    # Print node row with WAL LSN
+                    print(f"{row['node']:<6} {row['wal_lsn']:<15} {'':<6} {'':<15} {'':<12} {'':<20}")
+                    current_node = row['node']
+                # Print replication row
+                print(f"{'':<6} {'':<15} {row['from']:<6} {row['commit_lsn']:<15} {row['lag_bytes']:<12} {row['lag_time']:<20}")
+            
+            print("-" * 85)
+            print()  # Empty line
         
     except KeyboardInterrupt:
         formatter.error("Interrupted by user")

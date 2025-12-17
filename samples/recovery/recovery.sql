@@ -183,19 +183,20 @@ BEGIN
     END IF;
     RAISE INFO '[CHECK] - : Target node name verified: %', target_local_node;
 
+    -- Recovery slots are INACTIVE by design - they preserve WAL but are not consumed.
+    -- We check for existence, not active status.
     SELECT cnt
       INTO source_slot_count
       FROM dblink(
                source_dsn,
                $_sql$SELECT count(*)
                     FROM pg_replication_slots
-                   WHERE slot_name LIKE 'spk_recovery_%'
-                     AND active IS TRUE$_sql$
+                   WHERE slot_name LIKE 'spk_recovery_%'$_sql$
            ) AS t(cnt int);
     IF source_slot_count = 0 THEN
-        RAISE EXCEPTION 'No active recovery slot found on source node %', source_node_name;
+        RAISE EXCEPTION 'No recovery slot found on source node %', source_node_name;
     END IF;
-    RAISE INFO '[CHECK] - : Source recovery slot found: % active slot(s)', source_slot_count;
+    RAISE INFO '[CHECK] - : Source recovery slot found: % slot(s)', source_slot_count;
 
     -- Check for existing rescue subscriptions and their status
     SELECT cnt, cleanup_pending_cnt, failed_cnt
@@ -384,6 +385,34 @@ BEGIN
             source_node_name, source_dsn;
     END IF;
 
+    -- Determine effective skip_lsn first (target's current position)
+    -- This is critical: we need to pass this as target_restart_lsn when cloning
+    -- to ensure the cloned slot starts from the target's position, not the
+    -- current recovery slot position (which may have advanced)
+    effective_skip := skip_lsn;
+    IF effective_skip IS NULL THEN
+        -- Use lag_tracker which includes both regular and rescue subscriptions
+        SELECT commit_lsn
+          INTO effective_skip
+          FROM dblink(
+                   target_dsn,
+                   format(
+                       $_sql$SELECT commit_lsn
+                                FROM spock.lag_tracker
+                               WHERE origin_name = %L
+                                 AND receiver_name = %L
+                               ORDER BY commit_lsn DESC
+                               LIMIT 1$_sql$,
+                       failed_node_name,
+                       target_node_name
+                   )
+               ) AS t(commit_lsn pg_lsn);
+    END IF;
+
+    -- Clone recovery slot with skip_lsn as target_restart_lsn to ensure
+    -- the cloned slot starts from the target's current position.
+    -- CRITICAL: Without this, the cloned slot uses the recovery slot's current
+    -- position which may have advanced beyond where we need to replay from.
     SELECT t.cloned_slot_name,
            t.original_slot_name,
            t.restart_lsn,
@@ -392,7 +421,11 @@ BEGIN
       INTO slot_info
       FROM dblink(
                source_dsn,
-               'SELECT cloned_slot_name, original_slot_name, restart_lsn, success, message FROM spock.clone_recovery_slot()'
+               format(
+                   $_sql$SELECT cloned_slot_name, original_slot_name, restart_lsn, success, message 
+                          FROM spock.clone_recovery_slot(%L::pg_lsn)$_sql$,
+                   COALESCE(effective_skip::text, 'NULL')
+               )
            )
            AS t(
                cloned_slot_name text,
@@ -443,26 +476,15 @@ BEGIN
         RAISE INFO '[RECOVERY] - : Cloned slot % (restart LSN %)', cloned_slot_name, restart_lsn;
     END IF;
 
-    effective_skip := skip_lsn;
+    -- effective_skip was already calculated above for cloning
+    -- Now determine effective_stop (source's position, not cloned slot's position)
+    -- CRITICAL: Do NOT use the cloned slot's position as stop_lsn because the cloned
+    -- slot's restart_lsn is the target's position (we passed it as target_restart_lsn).
+    -- We need the source's position from lag_tracker.
     effective_stop := stop_lsn;
     IF effective_stop IS NULL THEN
-        SELECT slot_restart, slot_confirm
-          INTO slot_restart, slot_confirm
-          FROM dblink(
-                   source_dsn,
-                   format(
-                       $_sql$SELECT restart_lsn, confirmed_flush_lsn
-                                FROM pg_catalog.pg_replication_slots
-                               WHERE slot_name = %L$_sql$,
-                       slot_info.cloned_slot_name
-                   )
-               ) AS t(restart_lsn pg_lsn, confirmed_flush_lsn pg_lsn);
-
-        effective_stop := COALESCE(slot_confirm, slot_restart, restart_lsn);
-    END IF;
-
-    IF effective_stop IS NULL THEN
-        -- Use lag_tracker which includes both regular and rescue subscriptions
+        -- Use lag_tracker to get source's position (where source has replayed to)
+        -- This is the correct stop position, not the cloned slot's position
         SELECT commit_lsn
           INTO effective_stop
           FROM dblink(
@@ -478,52 +500,15 @@ BEGIN
                        source_node_name
                    )
                ) AS t(commit_lsn pg_lsn);
-
     END IF;
 
-    IF effective_skip IS NULL THEN
-        -- Use lag_tracker which includes both regular and rescue subscriptions
-        SELECT commit_lsn
-          INTO effective_skip
-          FROM dblink(
-                   target_dsn,
-                   format(
-                       $_sql$SELECT commit_lsn
-                                FROM spock.lag_tracker
-                               WHERE origin_name = %L
-                                 AND receiver_name = %L
-                               ORDER BY commit_lsn DESC
-                               LIMIT 1$_sql$,
-                       failed_node_name,
-                       target_node_name
-                   )
-               ) AS t(commit_lsn pg_lsn);
-    END IF;
-
+    -- effective_skip was already calculated above for cloning
+    -- If it's still NULL, use the restart_lsn from the cloned slot as fallback
     IF effective_skip IS NULL THEN
         effective_skip := restart_lsn;
     END IF;
 
-    IF effective_stop IS NULL THEN
-        -- Use lag_tracker which includes both regular and rescue subscriptions
-        -- This is more accurate and consistent than querying pg_replication_origin_status directly
-        SELECT commit_lsn
-          INTO effective_stop
-          FROM dblink(
-                   source_dsn,
-                   format(
-                       $_sql$SELECT commit_lsn
-                                FROM spock.lag_tracker
-                               WHERE origin_name = %L
-                                 AND receiver_name = %L
-                               ORDER BY commit_lsn DESC
-                               LIMIT 1$_sql$,
-                       failed_node_name,
-                       source_node_name
-                   )
-               ) AS t(commit_lsn pg_lsn);
-    END IF;
-
+    -- Ensure effective_stop is set (should have been set above, but double-check)
     IF effective_stop IS NULL THEN
         RAISE EXCEPTION 'Unable to determine stop LSN automatically; provide stop_lsn or stop_timestamp explicitly';
     END IF;
