@@ -184,23 +184,36 @@ SpockGroupEntry *
 spock_group_attach(Oid dbid, Oid node_id, Oid remote_node_id)
 {
 	SpockGroupKey key = make_key(dbid, node_id, remote_node_id);
-	SpockGroupEntry *e;
+	SpockGroupEntry *entry;
 	bool		found;
 
-	e = (SpockGroupEntry *) hash_search(SpockGroupHash, &key, HASH_ENTER, &found);
+	entry = (SpockGroupEntry *) hash_search(SpockGroupHash, &key, HASH_ENTER, &found);
+
+	/*
+	 * HASH_FIXED_SIZE hash tables can return NULL when full. Check for this
+	 * to prevent dereferencing NULL pointer.
+	 */
+	if (entry == NULL)
+	{
+		elog(ERROR, "SpockGroupHash is full, cannot attach to group "
+			 "(dbid=%u, node_id=%u, remote_node_id=%u)",
+			 dbid, node_id, remote_node_id);
+		return NULL;
+	}
+
 	if (!found)
 	{
 		/* initialize key values; Other entries will be updated later */
-		memset(&e->progress, 0, sizeof(e->progress));
-		e->progress.key = e->key;
+		memset(&entry->progress, 0, sizeof(entry->progress));
+		entry->progress.key = entry->key;
 
-		pg_atomic_init_u32(&e->nattached, 0);
-		ConditionVariableInit(&e->prev_processed_cv);
+		pg_atomic_init_u32(&entry->nattached, 0);
+		ConditionVariableInit(&entry->prev_processed_cv);
 	}
 
-	pg_atomic_add_fetch_u32(&e->nattached, 1);
+	pg_atomic_add_fetch_u32(&entry->nattached, 1);
 
-	return e;
+	return entry;
 }
 
 /*
@@ -292,7 +305,7 @@ bool
 spock_group_progress_update(const SpockApplyProgress *sap)
 {
 	SpockGroupKey key;
-	SpockGroupEntry *e;
+	SpockGroupEntry *entry;
 	bool		found;
 
 	if (!sap)
@@ -305,20 +318,32 @@ spock_group_progress_update(const SpockApplyProgress *sap)
 	}
 
 	key = make_key(sap->key.dbid, sap->key.node_id, sap->key.remote_node_id);
-	e = (SpockGroupEntry *) hash_search(SpockGroupHash, &key, HASH_ENTER, &found);
+	entry = (SpockGroupEntry *) hash_search(SpockGroupHash, &key, HASH_ENTER, &found);
+
+	/*
+	 * HASH_FIXED_SIZE hash tables can return NULL when full. Check for this
+	 * to prevent dereferencing NULL pointer.
+	 */
+	if (entry == NULL)
+	{
+		elog(WARNING, "SpockGroupHash is full, cannot update progress for group "
+			 "(dbid=%u, node_id=%u, remote_node_id=%u)",
+			 sap->key.dbid, sap->key.node_id, sap->key.remote_node_id);
+		return false;
+	}
 
 	if (!found)					/* New Entry */
 	{
 		/* Initialize key values; Other entries will be updated later */
-		memset(&e->progress, 0, sizeof(e->progress));
-		e->progress.key = e->key;
+		memset(&entry->progress, 0, sizeof(entry->progress));
+		entry->progress.key = entry->key;
 
-		pg_atomic_init_u32(&e->nattached, 0);
-		ConditionVariableInit(&e->prev_processed_cv);
+		pg_atomic_init_u32(&entry->nattached, 0);
+		ConditionVariableInit(&entry->prev_processed_cv);
 	}
 
 	LWLockAcquire(SpockCtx->apply_group_master_lock, LW_EXCLUSIVE);
-	progress_update_struct(&e->progress, sap);
+	progress_update_struct(&entry->progress, sap);
 	LWLockRelease(SpockCtx->apply_group_master_lock);
 	return true;
 }
